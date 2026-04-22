@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="22" fill="#08080f"/>
+  <rect x="12" y="12" width="100" height="100" rx="22" fill="#7c3aed" transform="translate(-12,-12)"/>
+  <!-- Playing card shape -->
+  <rect x="22" y="18" width="56" height="72" rx="8" fill="#0d0d1c" stroke="#7c3aed" stroke-width="2.5"/>
+  <!-- SV letters -->
+  <text x="50" y="52" font-family="sans-serif" font-weight="900" font-size="22" fill="#a78bfa" text-anchor="middle" dominant-baseline="middle">SV</text>
+  <!-- Corner pips -->
+  <circle cx="31" cy="28" r="3.5" fill="#7c3aed"/>
+  <circle cx="69" cy="80" r="3.5" fill="#7c3aed"/>
+</svg>
