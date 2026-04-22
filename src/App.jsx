@@ -840,7 +840,7 @@ const PricingModal = ({ onClose }) => {
             <div onClick={()=>setAnnual(a=>!a)} style={{width:44,height:24,borderRadius:12,background:annual?"#7c3aed":"rgba(255,255,255,0.1)",cursor:"pointer",position:"relative",transition:"all 0.2s"}}>
               <div style={{width:18,height:18,borderRadius:"50%",background:"white",position:"absolute",top:3,left:annual?23:3,transition:"left 0.2s"}}/>
             </div>
-            <span style={{fontFamily:"DM Sans",fontSize:12,color:annual?"white":"#475569"}}>Annual <span style={{color:"#06d6a0",fontWeight:600"}}>Save 30%</span></span>
+            <span style={{fontFamily:"DM Sans",fontSize:12,color:annual?"white":"#475569"}}>Annual <span style={{color:"#06d6a0",fontWeight:600}}>Save 30%</span></span>
           </div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(168px,1fr))",gap:12,marginBottom:20}}>
@@ -1121,4 +1121,3 @@ export default function SprintVibe() {
     </>
   );
 }
- 
