@@ -813,14 +813,193 @@ const RetroView = ({ session, roomUrl }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-//  ROOT APP
+//  PRICING MODAL
 // ─────────────────────────────────────────────────────────────
-export default function SprintVibe() {
-  const [session, setSession] = useState(null);  // null = show onboarding
-  const [stories, setStories] = useState({ backlog:[], sprint:[], in_progress:[], done:[] });
-  const [tab, setTab]         = useState("board");
+const PricingModal = ({ onClose }) => {
+  const [annual, setAnnual] = useState(false);
+  const plans = [
+    { name:"Solo", price:0, color:"#06d6a0", desc:"Solo creators, artists & indie devs",
+      features:["3 projects","Planning poker","Retrospectives","QR join","5 AI estimates/mo"] },
+    { name:"Pro", price:annual?59:7, color:"#7c3aed", hl:true, desc:"Freelancers & small teams (≤5)",
+      features:["Unlimited projects","All Solo features","Unlimited AI estimates","Notion/Jira/Linear export","Slack integration","Custom room branding"] },
+    { name:"Team", price:annual?159:19, color:"#ffd166", desc:"Growing teams up to 20",
+      features:["Everything in Pro","20 members","Analytics dashboard","Priority support","Custom workflows","Session history"] },
+    { name:"Corporate", price:annual?399:49, color:"#ff4d6d", desc:"Enterprise & agencies",
+      features:["Unlimited members","SSO / SAML","Dedicated success mgr","Custom branding","SLA guarantee","On-premise option"] },
+  ];
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.94)",zIndex:200,overflowY:"auto",padding:16}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{maxWidth:780,margin:"0 auto",paddingTop:16}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:2,marginBottom:7}}>PRICING</div>
+          <div style={{fontFamily:"Syne",fontSize:26,fontWeight:800,color:"white",marginBottom:7}}>Built for Everyone</div>
+          <div style={{fontFamily:"DM Sans",color:"#475569",fontSize:13,marginBottom:16}}>From solo artists to Fortune 500 — no one gets priced out</div>
+          {/* Annual toggle */}
+          <div style={{display:"flex",alignItems:"center",gap:10,justifyContent:"center"}}>
+            <span style={{fontFamily:"DM Sans",fontSize:12,color:annual?"#475569":"white"}}>Monthly</span>
+            <div onClick={()=>setAnnual(a=>!a)} style={{width:44,height:24,borderRadius:12,background:annual?"#7c3aed":"rgba(255,255,255,0.1)",cursor:"pointer",position:"relative",transition:"all 0.2s"}}>
+              <div style={{width:18,height:18,borderRadius:"50%",background:"white",position:"absolute",top:3,left:annual?23:3,transition:"left 0.2s"}}/>
+            </div>
+            <span style={{fontFamily:"DM Sans",fontSize:12,color:annual?"white":"#475569"}}>Annual <span style={{color:"#06d6a0",fontWeight:600"}}>Save 30%</span></span>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(168px,1fr))",gap:12,marginBottom:20}}>
+          {plans.map(p=>(
+            <div key={p.name} style={{background:p.hl?"rgba(124,58,237,0.12)":"rgba(255,255,255,0.03)",border:`1.5px solid ${p.hl?"#7c3aed":"rgba(255,255,255,0.07)"}`,borderRadius:20,padding:18,boxShadow:p.hl?"0 0 40px rgba(124,58,237,0.12)":"none"}}>
+              {p.hl&&<div style={{fontFamily:"Syne",fontSize:9,color:"#7c3aed",letterSpacing:2,marginBottom:7}}>★ MOST POPULAR</div>}
+              <div style={{fontFamily:"Syne",fontSize:15,fontWeight:800,color:p.color,marginBottom:2}}>{p.name}</div>
+              <div style={{fontFamily:"Syne",fontSize:26,fontWeight:800,color:"white"}}>
+                {p.price===0?"Free":`$${p.price}`}
+                {p.price>0&&<span style={{fontSize:11,color:"#475569",fontWeight:400}}>/mo</span>}
+              </div>
+              <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",margin:"7px 0 12px",lineHeight:1.4}}>{p.desc}</div>
+              {p.features.map(f=><div key={f} style={{fontFamily:"DM Sans",fontSize:11,color:"#94a3b8",marginBottom:5,display:"flex",gap:6}}><span style={{color:p.color}}>✓</span>{f}</div>)}
+              <button style={btn(p.hl?"#7c3aed":"rgba(255,255,255,0.05)",p.hl?"white":"#64748b",{width:"100%",padding:"9px",marginTop:14})}>
+                {p.price===0?"Get Started Free":"Subscribe Now"}
+              </button>
+            </div>
+          ))}
+        </div>
+        <div style={{textAlign:"center",fontFamily:"DM Sans",fontSize:12,color:"#334155",marginBottom:16}}>🎨 Solo creators & artists — Pro free for 3 months, no credit card needed</div>
+        <div style={{textAlign:"center"}}><button onClick={onClose} style={btn("rgba(255,255,255,0.05)","#475569",{padding:"9px 26px"})}>Close</button></div>
+      </div>
+    </div>
+  );
+};
 
-  const roomUrl = session ? `${window.location.origin}?join=${session.room?.code}` : "";
+// ─────────────────────────────────────────────────────────────
+//  ANALYTICS VIEW
+// ─────────────────────────────────────────────────────────────
+const AnalyticsView = ({ stories, session }) => {
+  const allStories = Object.values(stories).flat();
+  const estimated  = allStories.filter(s=>s.points).length;
+  const totalPts   = allStories.reduce((a,s)=>a+(parseInt(s.points)||0),0);
+  const donePts    = (stories.done||[]).reduce((a,s)=>a+(parseInt(s.points)||0),0);
+  const prog       = totalPts ? Math.round(donePts/totalPts*100) : 0;
+  const byPriority = { high:0, medium:0, low:0 };
+  allStories.forEach(s=>{ if(byPriority[s.priority]!==undefined) byPriority[s.priority]++; });
+
+  const Stat = ({label,value,color,sub}) => (
+    <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:16,textAlign:"center"}}>
+      <div style={{fontFamily:"Syne",fontSize:28,fontWeight:800,color:color||"white"}}>{value}</div>
+      <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginTop:3}}>{label}</div>
+      {sub&&<div style={{fontFamily:"DM Sans",fontSize:10,color:"#334155",marginTop:2}}>{sub}</div>}
+    </div>
+  );
+
+  return(
+    <div style={{padding:"20px 16px 48px",maxWidth:640,margin:"0 auto"}}>
+      <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:4}}>Analytics 📊</div>
+      <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569",marginBottom:24}}>Room: <span style={{color:"#a78bfa"}}>{session.room?.code}</span></div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:24}}>
+        <Stat label="Total Stories"   value={allStories.length}  color="#7c3aed"/>
+        <Stat label="Estimated"       value={estimated}           color="#a78bfa" sub={`${allStories.length-estimated} remaining`}/>
+        <Stat label="Sprint Points"   value={totalPts}            color="#ffd166"/>
+        <Stat label="Completed"       value={`${prog}%`}          color="#06d6a0" sub={`${donePts}/${totalPts} pts`}/>
+      </div>
+
+      {/* Priority breakdown */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
+        <div style={{fontFamily:"Syne",fontSize:11,color:"#64748b",letterSpacing:1,marginBottom:14}}>PRIORITY BREAKDOWN</div>
+        {[{k:"high",l:"High Priority",c:"#ff4d6d"},{k:"medium",l:"Medium Priority",c:"#ffd166"},{k:"low",l:"Low Priority",c:"#06d6a0"}].map(p=>(
+          <div key={p.k} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{fontFamily:"DM Sans",fontSize:12,color:"#94a3b8"}}>{p.l}</span>
+              <span style={{fontFamily:"Syne",fontSize:12,fontWeight:700,color:p.c}}>{byPriority[p.k]}</span>
+            </div>
+            <div style={{background:"rgba(255,255,255,0.06)",borderRadius:4,height:6}}>
+              <div style={{width:`${allStories.length?Math.round(byPriority[p.k]/allStories.length*100):0}%`,background:p.c,height:"100%",borderRadius:4,transition:"width 0.6s"}}/>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Column breakdown */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
+        <div style={{fontFamily:"Syne",fontSize:11,color:"#64748b",letterSpacing:1,marginBottom:14}}>BOARD STATUS</div>
+        {COLUMNS.map(col=>(
+          <div key={col.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+            <span style={{width:9,height:9,borderRadius:3,background:col.color,flexShrink:0}}/>
+            <span style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",flex:1}}>{col.title}</span>
+            <span style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:col.color}}>{(stories[col.id]||[]).length}</span>
+            <span style={{fontFamily:"DM Sans",fontSize:11,color:"#475569"}}>stories</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Upgrade prompt if no stories */}
+      {allStories.length===0&&(
+        <div style={{background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:14,padding:18,textAlign:"center"}}>
+          <div style={{fontSize:28,marginBottom:8}}>📈</div>
+          <div style={{fontFamily:"Syne",fontSize:14,fontWeight:700,color:"white",marginBottom:6}}>No data yet</div>
+          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>Add stories to your board to see analytics</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+//  SHARE / INVITE MODAL  (for demoing to teammates)
+// ─────────────────────────────────────────────────────────────
+const ShareModal = ({ session, roomUrl, onClose }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = (text) => { navigator.clipboard?.writeText(text).catch(()=>{}); setCopied(true); setTimeout(()=>setCopied(false),2000); };
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d1c",border:"1px solid rgba(124,58,237,0.35)",borderRadius:22,padding:26,maxWidth:380,width:"100%",boxShadow:"0 0 70px rgba(124,58,237,0.2)"}}>
+        <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:2,marginBottom:10}}>SHARE & INVITE</div>
+        <div style={{fontFamily:"Syne",fontSize:20,fontWeight:800,color:"white",marginBottom:4}}>Invite Your Team</div>
+        <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569",marginBottom:20}}>Anyone with the link or code can join from any device — no account needed</div>
+
+        {/* QR Code */}
+        <div style={{textAlign:"center",marginBottom:16}}>
+          <div style={{background:"white",borderRadius:13,padding:11,display:"inline-block",boxShadow:"0 0 35px rgba(124,58,237,0.3)"}}>
+            <QRCode value={roomUrl} size={140}/>
+          </div>
+        </div>
+
+        {/* Room code */}
+        <div style={{background:"rgba(124,58,237,0.12)",borderRadius:11,padding:"10px 16px",marginBottom:12,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontFamily:"DM Sans",fontSize:10,color:"#64748b",marginBottom:2}}>ROOM CODE</div>
+            <div style={{fontFamily:"Syne",fontSize:20,fontWeight:800,color:"#a78bfa",letterSpacing:3}}>{session.room?.code}</div>
+          </div>
+          <button onClick={()=>copy(session.room?.code)} style={btn("rgba(124,58,237,0.3)","#a78bfa",{fontSize:11,padding:"6px 12px"})}>Copy</button>
+        </div>
+
+        {/* Full link */}
+        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"10px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+          <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",flex:1,wordBreak:"break-all"}}>{roomUrl}</div>
+          <button onClick={()=>copy(roomUrl)} style={btn(copied?"#06d6a0":"rgba(255,255,255,0.08)",copied?"#0d0d1c":"#94a3b8",{padding:"6px 12px",fontSize:11,flexShrink:0})}>{copied?"✓":"Copy"}</button>
+        </div>
+
+        {/* How to join instructions */}
+        <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:14,marginBottom:16}}>
+          <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:10}}>HOW YOUR TEAMMATE JOINS</div>
+          {["Open the link on any device — phone, tablet or laptop","Or scan the QR code with their phone camera","Enter their name and click Join Room","They're in instantly — no account needed"].map((s,i)=>(
+            <div key={i} style={{display:"flex",gap:10,marginBottom:7,alignItems:"flex-start"}}>
+              <div style={{width:18,height:18,borderRadius:6,background:"rgba(124,58,237,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:10,color:"#a78bfa",flexShrink:0}}>{i+1}</div>
+              <div style={{fontFamily:"DM Sans",fontSize:12,color:"#94a3b8",lineHeight:1.4}}>{s}</div>
+            </div>
+          ))}
+        </div>
+        <button onClick={onClose} style={btn("#7c3aed","white",{width:"100%",padding:"12px"})}>Done</button>
+      </div>
+    </div>
+  );
+};
+export default function SprintVibe() {
+  const [session, setSession]   = useState(null);
+  const [stories, setStories]   = useState({ backlog:[], sprint:[], in_progress:[], done:[] });
+  const [tab, setTab]           = useState("board");
+  const [modal, setModal]       = useState(null);
+
+  // Real URL — uses your actual Vercel domain so QR codes work on iPhone/Android
+  const roomUrl = session
+    ? `${window.location.protocol}//${window.location.host}?join=${session.room?.code}`
+    : "";
 
   // Handle deep-link join via ?join=CODE in URL
   useEffect(() => {
@@ -851,9 +1030,10 @@ export default function SprintVibe() {
   const prog    = allPts ? Math.round(donePts/allPts*100) : 0;
 
   const TABS = [
-    { id:"board", l:"📋 Board"  },
-    { id:"poker", l:"🃏 Poker"  },
-    { id:"retro", l:"🏁 Retro"  },
+    { id:"board",     l:"📋 Board"     },
+    { id:"poker",     l:"🃏 Poker"     },
+    { id:"retro",     l:"🏁 Retro"     },
+    { id:"analytics", l:"📊 Analytics" },
   ];
 
   // Show onboarding if no session
@@ -863,7 +1043,11 @@ export default function SprintVibe() {
       <style>{`*{-webkit-tap-highlight-color:transparent;}body{margin:0;background:#08080f;}@keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}select option{background:#0d0d1c}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(124,58,237,0.3);border-radius:2px}`}</style>
       <div style={{minHeight:"100vh",background:"#08080f",backgroundImage:"radial-gradient(ellipse 70% 40% at 50% -10%,rgba(124,58,237,0.18) 0%,transparent 60%)"}}>
         <Onboarding onEnter={handleEnter}/>
+        <div style={{textAlign:"center",paddingBottom:32}}>
+          <button onClick={()=>setModal("pricing")} style={btn("rgba(255,255,255,0.04)","#64748b",{fontSize:12,border:"1px solid rgba(255,255,255,0.06)"})}>💎 View Pricing</button>
+        </div>
       </div>
+      {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)}/>}
     </>
   );
 
@@ -889,8 +1073,10 @@ export default function SprintVibe() {
             </div>
           )}
 
-          {/* User + leave */}
-          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
+          {/* Right side — share, pricing, user, leave */}
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <button onClick={()=>setModal("share")}   style={btn("#7c3aed","white",{padding:"6px 12px",fontSize:11})}>📱 Share</button>
+            <button onClick={()=>setModal("pricing")} style={btn("rgba(255,255,255,0.06)","#94a3b8",{padding:"6px 12px",fontSize:11})}>💎 Pricing</button>
             <div style={{display:"flex",alignItems:"center",gap:7,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:"5px 10px"}}>
               <div style={{width:22,height:22,borderRadius:"50%",background:session.color,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:9,color:"white"}}>
                 {session.displayName.slice(0,2).toUpperCase()}
@@ -924,8 +1110,13 @@ export default function SprintVibe() {
             </div>
           </div>
         )}
-        {tab==="poker"&&<PokerSession stories={stories} session={session} roomUrl={roomUrl}/>}
-        {tab==="retro"&&<RetroView session={session} roomUrl={roomUrl}/>}
+        {tab==="poker"     &&<PokerSession  stories={stories} session={session} roomUrl={roomUrl}/>}
+        {tab==="retro"     &&<RetroView     session={session} roomUrl={roomUrl}/>}
+        {tab==="analytics" &&<AnalyticsView stories={stories} session={session}/>}
+
+        {/* Modals */}
+        {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)}/>}
+        {modal==="share"  &&<ShareModal session={session} roomUrl={roomUrl} onClose={()=>setModal(null)}/>}
       </div>
     </>
   );
