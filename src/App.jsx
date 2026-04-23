@@ -1158,7 +1158,7 @@ const PokerSession = ({ stories, session, roomUrl }) => {
           <div style={{fontFamily:"DM Sans",fontSize:12,color:"#64748b",textAlign:"center",marginBottom:10}}>Accept a point value:</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginBottom:22}}>
             {POKER_VALUES.filter(v=>!isNaN(parseFloat(v))).map(v=>(
-              <button key={v} onClick={async()=>{ await scoreStory(ticket.id, parseFloat(v)).catch(console.error); setStep("pick"); }}
+              <button key={v} onClick={()=>setStep("pick")}
                 style={{width:52,height:52,borderRadius:12,cursor:"pointer",border:`2px solid ${v===String(suggested)?"#06d6a0":"rgba(255,255,255,0.1)"}`,background:v===String(suggested)?"rgba(6,214,160,0.15)":"rgba(255,255,255,0.04)",color:v===String(suggested)?"#06d6a0":"white",fontFamily:"Syne",fontWeight:800,fontSize:15,transition:"all 0.18s"}}>
                 {v}
               </button>
@@ -1521,6 +1521,189 @@ const PricingModal = ({ onClose, onUpgrade }) => {
 // ─────────────────────────────────────────────────────────────
 //  ANALYTICS VIEW
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+//  RETRO PREP VIEW — add notes days/weeks before the live retro
+// ─────────────────────────────────────────────────────────────
+const RetroPrepView = ({ session }) => {
+  const { userId, displayName, color, room } = session;
+  const [notes, setNotes]       = useState({ went_well:[], went_bad:[], action_items:[] });
+  const [inputs, setInputs]     = useState({ went_well:"", went_bad:"", action_items:"" });
+  const [loading, setLoading]   = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [imported, setImported] = useState(false);
+  const [toast, setToast]       = useState("");
+
+  const COLS = [
+    { id:"went_well",    label:"✅ Went Well",    color:"#06d6a0", placeholder:"What went well this sprint?" },
+    { id:"went_bad",     label:"⚠️ To Improve",   color:"#ffd166", placeholder:"What could be better?" },
+    { id:"action_items", label:"⚡ Action Items",  color:"#7c3aed", placeholder:"What should we do next sprint?" },
+  ];
+
+  // Load prep notes in real time
+  useEffect(() => {
+    if (!room?.id) return;
+    const load = async () => {
+      const { data } = await supabase.from("retro_prep").select("*")
+        .eq("room_id", room.id).eq("imported", false).order("created_at");
+      if (data) {
+        const grouped = { went_well:[], went_bad:[], action_items:[] };
+        data.forEach(n => { if (grouped[n.column_id]) grouped[n.column_id].push(n); });
+        setNotes(grouped);
+      }
+    };
+    load();
+    const ch = supabase.channel(`retro_prep:${room.id}`)
+      .on("postgres_changes", { event:"*", schema:"public", table:"retro_prep", filter:`room_id=eq.${room.id}` }, load)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [room?.id]);
+
+  const addNote = async (colId) => {
+    const text = inputs[colId]?.trim();
+    if (!text) return;
+    setLoading(true);
+    try {
+      await supabase.from("retro_prep").insert({
+        room_id: room.id, column_id: colId, text,
+        user_id: userId, display_name: displayName, color, imported: false
+      });
+      setInputs(p => ({ ...p, [colId]: "" }));
+    } catch(e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  const deleteNote = async (id) => {
+    await supabase.from("retro_prep").delete().eq("id", id);
+  };
+
+  // Import all prep notes into the live retro
+  const importToRetro = async () => {
+    setImporting(true);
+    try {
+      const allNotes = [...notes.went_well, ...notes.went_bad, ...notes.action_items];
+      if (allNotes.length === 0) { setToast("No prep notes to import!"); setTimeout(()=>setToast(""),3000); return; }
+
+      // Map prep columns to retro columns
+      const COL_MAP = { went_well:"went_well", went_bad:"to_improve", action_items:"action_items" };
+
+      for (const note of allNotes) {
+        await supabase.from("retro_notes").insert({
+          room_id: room.id,
+          column_id: COL_MAP[note.column_id] || note.column_id,
+          text: note.text,
+          user_id: note.user_id,
+          display_name: note.display_name,
+          votes: 0
+        });
+        // Mark as imported so they don't show in prep anymore
+        await supabase.from("retro_prep").update({ imported: true }).eq("id", note.id);
+      }
+      setImported(true);
+      setToast(`✅ ${allNotes.length} notes imported to live retro!`);
+      setTimeout(()=>setToast(""), 4000);
+    } catch(e) { setToast("Import failed — try again"); setTimeout(()=>setToast(""),3000); }
+    finally { setImporting(false); }
+  };
+
+  const totalNotes = Object.values(notes).flat().length;
+
+  return(
+    <div style={{padding:"20px 16px 60px",maxWidth:900,margin:"0 auto"}}>
+
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:24}}>
+        <div>
+          <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:4}}>📝 Retro Prep</div>
+          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>
+            Collect team feedback anytime — days or weeks before the live retro.
+            When you're ready, import everything into the live session.
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:9,padding:"6px 12px"}}>
+            {totalNotes} note{totalNotes!==1?"s":""} ready
+          </div>
+          <button onClick={importToRetro} disabled={importing||totalNotes===0}
+            style={btn(totalNotes>0?"#7c3aed":"rgba(255,255,255,0.06)",totalNotes>0?"white":"#334155",{padding:"9px 18px",fontSize:13,opacity:importing?0.6:1})}>
+            {importing?"Importing…":"🚀 Import to Live Retro"}
+          </button>
+        </div>
+      </div>
+
+      {/* Toast */}
+      {toast&&(
+        <div style={{background:"rgba(13,13,28,0.97)",border:"1px solid rgba(124,58,237,0.4)",borderRadius:12,padding:"10px 18px",marginBottom:16,fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0"}}>
+          {toast}
+        </div>
+      )}
+
+      {/* Info banner */}
+      <div style={{background:"rgba(124,58,237,0.07)",border:"1px solid rgba(124,58,237,0.15)",borderRadius:14,padding:"12px 16px",marginBottom:24,display:"flex",gap:12,alignItems:"center"}}>
+        <span style={{fontSize:20}}>💡</span>
+        <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b",lineHeight:1.5}}>
+          Share this room code <span style={{color:"#a78bfa",fontFamily:"Syne",fontWeight:700,letterSpacing:1}}>{room?.code}</span> with your team so everyone can add notes before the retro. Notes are visible to all team members in real time.
+        </div>
+      </div>
+
+      {/* Three columns */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:16}}>
+        {COLS.map(col=>(
+          <div key={col.id} style={{background:"rgba(255,255,255,0.03)",border:`1px solid rgba(255,255,255,0.07)`,borderRadius:16,overflow:"hidden"}}>
+            {/* Column header */}
+            <div style={{padding:"14px 16px",borderBottom:`1px solid ${col.color}33`,background:`${col.color}0a`}}>
+              <div style={{fontFamily:"Syne",fontSize:13,fontWeight:800,color:col.color}}>{col.label}</div>
+              <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginTop:2}}>
+                {notes[col.id].length} note{notes[col.id].length!==1?"s":""}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div style={{padding:"12px 12px 8px",minHeight:120,maxHeight:400,overflowY:"auto"}}>
+              {notes[col.id].length===0&&(
+                <div style={{textAlign:"center",padding:"24px 0",fontFamily:"DM Sans",fontSize:12,color:"#1e293b"}}>
+                  No notes yet — be the first!
+                </div>
+              )}
+              {notes[col.id].map(n=>(
+                <div key={n.id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"10px 12px",marginBottom:8,position:"relative",animation:"noteIn 0.2s ease"}}>
+                  <div style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",lineHeight:1.5,marginBottom:6,paddingRight:20}}>{n.text}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:7}}>
+                    <div style={{width:16,height:16,borderRadius:"50%",background:n.color||col.color,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:7,color:"white",flexShrink:0}}>
+                      {n.display_name?.slice(0,1).toUpperCase()}
+                    </div>
+                    <span style={{fontFamily:"DM Sans",fontSize:11,color:"#475569"}}>{n.display_name}</span>
+                    {n.user_id===userId&&(
+                      <button onClick={()=>deleteNote(n.id)}
+                        style={{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:14,padding:"0 2px",lineHeight:1,marginLeft:"auto"}}
+                        title="Delete">×</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Add note input */}
+            <div style={{padding:"8px 12px 12px",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+              <div style={{display:"flex",gap:8}}>
+                <input
+                  value={inputs[col.id]}
+                  onChange={e=>setInputs(p=>({...p,[col.id]:e.target.value}))}
+                  onKeyDown={e=>e.key==="Enter"&&addNote(col.id)}
+                  placeholder={col.placeholder}
+                  style={{...inp(),flex:1,fontSize:12,padding:"8px 10px"}}/>
+                <button onClick={()=>addNote(col.id)} disabled={loading||!inputs[col.id]?.trim()}
+                  style={btn(col.color,"white",{padding:"8px 12px",fontSize:12,flexShrink:0,opacity:!inputs[col.id]?.trim()?0.4:1})}>
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const AnalyticsView = ({ stories, session }) => {
   const allStories  = Object.values(stories).flat();
   const totalPts    = allStories.reduce((a,s)=>a+(parseInt(s.points)||0),0);
@@ -1903,7 +2086,7 @@ const StripeModal = ({ onClose }) => {
             <div style={{fontFamily:"DM Sans",fontSize:14,color:"#64748b",lineHeight:1.6,marginBottom:24}}>
               You now have full access to all {selected?.name} features.
             </div>
-            <button onClick={onClose}
+            <button onClick={()=>{ onUpgradePlan&&onUpgradePlan(selected?.id||"pro"); onClose(); }}
               style={btn("#7c3aed","white",{padding:"13px 32px",fontSize:14})}>Start using {selected?.name} →</button>
           </div>
         </>)}
@@ -1954,7 +2137,7 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
     try {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
-      setNewPassword(""); setConfirmPassword("");
+      setNewPassword(""); setConfirmPassword(""); setCurrentPassword("");
       setSaveMsg("✓ Password updated!");
       setTimeout(() => setSaveMsg(""), 3000);
     } catch(e) { setSaveMsg(e.message || "Failed to update password"); }
@@ -2190,12 +2373,11 @@ export default function SprintVibe() {
 
   const handleLeave = async () => {
     if (session?.room?.id) await leaveRoom(session.room.id, session.userId).catch(()=>{});
-    // Preserve user identity so the room selector can load workspaces
-    setSession(prev => prev ? { ...prev, room: null } : null);
+    setSession(null);
     setStories({ backlog:[], sprint:[], in_progress:[], done:[] });
     setParticipants([]);
     try { localStorage.removeItem("sprintvibe_session"); } catch(e) {}
-    setScreen("roomselector");
+    setScreen("roomselector"); // Go to room selector, not landing
   };
 
   const handleSignOut = async () => {
@@ -2315,6 +2497,7 @@ export default function SprintVibe() {
   const TABS = [
     { id:"board",     l:"📋 Board"     },
     { id:"poker",     l:"🃏 Poker"     },
+    { id:"prep",      l:"📝 Retro Prep" },
     { id:"retro",     l:"🏁 Retro"     },
     { id:"analytics", l:"📊 Analytics" },
   ];
@@ -2503,6 +2686,7 @@ export default function SprintVibe() {
         )}
         {tab==="poker"     &&<PokerSession  stories={stories} session={session} roomUrl={roomUrl}/>}
         {tab==="retro"     &&<RetroView     session={session} roomUrl={roomUrl}/>}
+        {tab==="prep"      &&<RetroPrepView session={session}/>}
         {tab==="analytics" &&<AnalyticsView stories={stories} session={session}/>}
 
         {/* Modals */}
