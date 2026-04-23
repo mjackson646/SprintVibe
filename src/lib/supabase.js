@@ -109,6 +109,16 @@ export const getRetroNotes = async (roomId) => {
   return data
 }
 
+export const updateRetroNoteColumn = async (noteId, columnId) => {
+  const { error } = await supabase.from('retro_notes').update({ column_id: columnId }).eq('id', noteId)
+  if (error) throw error
+}
+
+export const deleteRetroNote = async (noteId) => {
+  const { error } = await supabase.from('retro_notes').delete().eq('id', noteId)
+  if (error) throw error
+}
+
 export const saveStory = async (roomId, story, columnId) => {
   const { error } = await supabase.from('stories').upsert({
     id: story.id, room_id: roomId, title: story.title,

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase, createRoom, findRoom, joinRoom, leaveRoom,
          castPokerVote, revealPokerVotes, getPokerVotes,
          addRetroNote, voteRetroNote, getRetroNotes,
+         updateRetroNoteColumn, deleteRetroNote,
          getParticipants, setPhase, generateCode,
          signUp, signIn, signInWithGoogle, signOut,
          saveStory, deleteStory, moveStory, scoreStory, getStories,
@@ -1178,6 +1179,176 @@ const PokerSession = ({ stories, session, roomUrl }) => {
 // ─────────────────────────────────────────────────────────────
 //  RETROSPECTIVE
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+//  RETRO PREP — pre-retro note collection (weeks in advance)
+// ─────────────────────────────────────────────────────────────
+const PREP_COLS = [
+  { id:"prep_went_well", label:"Went Well",  emoji:"✅", color:"#06d6a0", target:"went_well"  },
+  { id:"prep_improve",   label:"To Improve", emoji:"🔧", color:"#ffd166", target:"improve"    },
+];
+
+const RetroPrepView = ({ session }) => {
+  const { userId, displayName, room, role } = session;
+  const [prepNotes, setPrepNotes] = useState({ prep_went_well:[], prep_improve:[] });
+  const [inputs,    setInputs]    = useState({ prep_went_well:"",  prep_improve:""  });
+  const [moving,    setMoving]    = useState(false);
+  const [toast,     setToast]     = useState("");
+
+  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
+
+  useEffect(() => {
+    if (!room) return;
+    const load = async () => {
+      const raw = await getRetroNotes(room.id);
+      const grouped = { prep_went_well:[], prep_improve:[] };
+      raw.forEach(n => { if (grouped[n.column_id]) grouped[n.column_id].push(n); });
+      setPrepNotes(grouped);
+    };
+    load();
+    const ch = supabase.channel(`prep:${room.id}`)
+      .on("postgres_changes", { event:"*", schema:"public", table:"retro_notes", filter:`room_id=eq.${room.id}` }, load)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [room]);
+
+  const addNote = async (col) => {
+    const t = inputs[col].trim(); if (!t) return;
+    setInputs(i => ({ ...i, [col]:"" }));
+    await addRetroNote(room.id, col, t, userId, displayName);
+  };
+
+  const moveNote = async (note, targetCol) => {
+    await updateRetroNoteColumn(note.id, targetCol);
+    showToast("Moved to retro ✓");
+  };
+
+  const removeNote = async (noteId) => {
+    await deleteRetroNote(noteId);
+  };
+
+  const moveAllToRetro = async () => {
+    const all = Object.values(prepNotes).flat();
+    if (!all.length) return;
+    setMoving(true);
+    const map = { prep_went_well:"went_well", prep_improve:"improve" };
+    await Promise.all(all.map(n => updateRetroNoteColumn(n.id, map[n.column_id])));
+    setMoving(false);
+    showToast(`${all.length} notes moved to Retro ✓`);
+  };
+
+  const totalPrep = Object.values(prepNotes).flat().length;
+
+  return (
+    <div style={{padding:"16px 16px 48px",position:"relative"}}>
+
+      {/* Local toast */}
+      {toast && (
+        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:"rgba(13,13,28,0.97)",border:"1px solid rgba(6,214,160,0.4)",borderRadius:12,padding:"10px 18px",zIndex:500,fontFamily:"DM Sans",fontSize:13,color:"#06d6a0",display:"flex",alignItems:"center",gap:10,boxShadow:"0 8px 32px rgba(0,0,0,0.5)",animation:"slideUp 0.3s ease",whiteSpace:"nowrap"}}>
+          {toast}
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{maxWidth:900,margin:"0 auto 20px"}}>
+        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+          <div>
+            <div style={{fontFamily:"Syne",fontWeight:800,fontSize:20,color:"white",marginBottom:4}}>📝 Retro Prep</div>
+            <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569",lineHeight:1.6}}>
+              Collect team feedback in advance. Add notes anytime — the host can push them into the live retro when ready.
+            </div>
+          </div>
+          {role==="host" && totalPrep>0 && (
+            <button onClick={moveAllToRetro} disabled={moving}
+              style={btn("#7c3aed","white",{opacity:moving?0.6:1,flexShrink:0})}>
+              {moving?"Moving...":"🚀 Move All to Retro"}
+            </button>
+          )}
+        </div>
+
+        {/* Stats row */}
+        <div style={{display:"flex",gap:10,marginTop:14,flexWrap:"wrap"}}>
+          {PREP_COLS.map(col=>(
+            <div key={col.id} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"7px 14px",display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:14}}>{col.emoji}</span>
+              <span style={{fontFamily:"DM Sans",fontSize:12,color:"#94a3b8"}}>{col.label}</span>
+              <span style={{fontFamily:"Syne",fontWeight:800,fontSize:14,color:col.color}}>{prepNotes[col.id].length}</span>
+            </div>
+          ))}
+          {totalPrep===0 && (
+            <div style={{fontFamily:"DM Sans",fontSize:12,color:"#334155",alignSelf:"center"}}>
+              No prep notes yet — teammates can start adding now.
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Columns */}
+      <div style={{display:"flex",gap:12,maxWidth:900,margin:"0 auto",flexWrap:"wrap"}}>
+        {PREP_COLS.map(col=>(
+          <div key={col.id} style={{flex:"1 1 380px",minWidth:300,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,overflow:"hidden"}}>
+
+            {/* Column header */}
+            <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.06)",display:"flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.02)"}}>
+              <span style={{fontSize:16}}>{col.emoji}</span>
+              <span style={{fontFamily:"Syne",fontWeight:800,fontSize:14,color:"white"}}>{col.label}</span>
+              <span style={{marginLeft:"auto",fontFamily:"Syne",fontWeight:800,fontSize:13,color:col.color}}>{prepNotes[col.id].length}</span>
+            </div>
+
+            {/* Input */}
+            <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.04)",display:"flex",gap:8}}>
+              <input
+                value={inputs[col.id]}
+                onChange={e=>setInputs(i=>({...i,[col.id]:e.target.value}))}
+                onKeyDown={e=>e.key==="Enter"&&addNote(col.id)}
+                placeholder={`Add to ${col.label}...`}
+                style={inp({flex:1})}
+              />
+              <button onClick={()=>addNote(col.id)} style={btn(col.color,"#08080f",{padding:"8px 13px",flexShrink:0,fontSize:16,lineHeight:1})}>+</button>
+            </div>
+
+            {/* Notes list */}
+            <div style={{padding:"10px 12px",display:"flex",flexDirection:"column",gap:7,maxHeight:440,overflowY:"auto"}}>
+              {prepNotes[col.id].length===0 && (
+                <div style={{textAlign:"center",padding:"28px 0",color:"#334155",fontFamily:"DM Sans",fontSize:12}}>
+                  No notes yet — be the first!
+                </div>
+              )}
+              {prepNotes[col.id].map(note=>(
+                <div key={note.id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"10px 12px",animation:"noteIn 0.2s ease"}}>
+                  <div style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",lineHeight:1.5,marginBottom:8}}>{note.text}</div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:18,height:18,borderRadius:"50%",background:"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:7,color:"white",flexShrink:0}}>
+                        {note.display_name?.slice(0,2).toUpperCase()}
+                      </div>
+                      <span style={{fontFamily:"DM Sans",fontSize:10,color:"#475569"}}>{note.display_name}</span>
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      {role==="host" && (
+                        <button onClick={()=>moveNote(note,col.target)}
+                          style={btn("rgba(124,58,237,0.15)","#a78bfa",{padding:"3px 9px",fontSize:10})}>
+                          → Retro
+                        </button>
+                      )}
+                      {(role==="host"||note.user_id===userId) && (
+                        <button onClick={()=>removeNote(note.id)}
+                          style={btn("rgba(255,77,109,0.1)","#ff4d6d",{padding:"3px 8px",fontSize:10})}>
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
 const RetroView = ({ session, roomUrl }) => {
   const { userId, displayName, room, role } = session;
   const [phase, setPhaseLocal] = useState("lobby");
@@ -2315,6 +2486,7 @@ export default function SprintVibe() {
   const TABS = [
     { id:"board",     l:"📋 Board"     },
     { id:"poker",     l:"🃏 Poker"     },
+    { id:"prep",      l:"📝 Prep"      },
     { id:"retro",     l:"🏁 Retro"     },
     { id:"analytics", l:"📊 Analytics" },
   ];
@@ -2501,7 +2673,8 @@ export default function SprintVibe() {
             </div>
           </div>
         )}
-        {tab==="poker"     &&<PokerSession  stories={stories} session={session} roomUrl={roomUrl}/>}
+        {tab==="poker"     &&<PokerSession   stories={stories} session={session} roomUrl={roomUrl}/>}
+        {tab==="prep"      &&<RetroPrepView session={session}/>}
         {tab==="retro"     &&<RetroView     session={session} roomUrl={roomUrl}/>}
         {tab==="analytics" &&<AnalyticsView stories={stories} session={session}/>}
 
