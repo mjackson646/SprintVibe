@@ -2214,7 +2214,7 @@ export default function SprintVibe() {
     try { return localStorage.getItem("sv_notif_enabled") !== "false"; } catch { return true; }
   });
 
-  // Plan helpers
+  // Plan helpers — defined BEFORE useEffect so they can be called inside it
   const isPro = ["pro","team","corporate"].includes(userPlan);
   const isTeam = ["team","corporate"].includes(userPlan);
   const upgradePlan = (plan) => {
@@ -2225,13 +2225,12 @@ export default function SprintVibe() {
   // Gate a feature — returns true if allowed, false + shows paywall if not
   const canUse = (feature) => {
     if (isPro) return true;
-    // Free users can JOIN sessions but not HOST poker/retro
     if ((feature === "hosting_poker" || feature === "hosting_retro") && session?.role !== "host") return true;
     setPaywall(feature);
     return false;
   };
 
-  // Smart notify — respects the toggle
+  // ── Session persistence — restore on refresh ─────────────
   const smartNotify = (title, body) => {
     if (notificationsEnabled) notify(title, body);
   };
