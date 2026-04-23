@@ -3,7 +3,9 @@ import { supabase, createRoom, findRoom, joinRoom, leaveRoom,
          castPokerVote, revealPokerVotes, getPokerVotes,
          addRetroNote, voteRetroNote, getRetroNotes,
          getParticipants, setPhase, generateCode,
-         signUp, signIn, signInWithGoogle, signOut } from "./lib/supabase";
+         signUp, signIn, signInWithGoogle, signOut,
+         saveStory, deleteStory, moveStory, scoreStory, getStories,
+         broadcastNotification, sendRetroRecap } from "./lib/supabase";
 
 // ─────────────────────────────────────────────────────────────
 //  FONTS
@@ -342,19 +344,27 @@ const Onboarding = ({ onEnter }) => {
 // ─────────────────────────────────────────────────────────────
 //  KANBAN CARD
 // ─────────────────────────────────────────────────────────────
-const KanbanCard = ({ story, columnId, onDrop }) => {
+const KanbanCard = ({ story, columnId, onDrop, onDelete }) => {
   const [dragging,setDragging]=useState(false);
+  const [showDel,setShowDel]=useState(false);
   const PC={high:"#ff4d6d",medium:"#ffd166",low:"#06d6a0"};
   const tr=useRef(null);
   const onTS=e=>{const t=e.touches[0];tr.current={x:t.clientX,y:t.clientY};};
   const onTE=e=>{if(!tr.current)return;const t=e.changedTouches[0];const col=document.elementFromPoint(t.clientX,t.clientY)?.closest("[data-col]");if(col&&col.dataset.col!==columnId)onDrop(story.id,columnId,col.dataset.col);tr.current=null;};
   return(
-    <div draggable onDragStart={e=>{setDragging(true);e.dataTransfer.setData("cid",story.id);e.dataTransfer.setData("from",columnId);}} onDragEnd={()=>setDragging(false)} onTouchStart={onTS} onTouchEnd={onTE}
-      style={{background:dragging?"rgba(124,58,237,0.14)":"rgba(255,255,255,0.06)",border:`1px solid ${dragging?"#7c3aed":"rgba(255,255,255,0.09)"}`,borderRadius:12,padding:"11px 13px",marginBottom:9,cursor:"grab",opacity:dragging?0.5:1,transition:"all 0.18s",userSelect:"none",touchAction:"none"}}>
+    <div draggable onDragStart={e=>{setDragging(true);e.dataTransfer.setData("cid",story.id);e.dataTransfer.setData("from",columnId);}} onDragEnd={()=>setDragging(false)}
+      onTouchStart={onTS} onTouchEnd={onTE}
+      onMouseEnter={()=>setShowDel(true)} onMouseLeave={()=>setShowDel(false)}
+      style={{background:dragging?"rgba(124,58,237,0.14)":"rgba(255,255,255,0.06)",border:`1px solid ${dragging?"#7c3aed":"rgba(255,255,255,0.09)"}`,borderRadius:12,padding:"11px 13px",marginBottom:9,cursor:"grab",opacity:dragging?0.5:1,transition:"all 0.18s",userSelect:"none",touchAction:"none",position:"relative"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
         <span style={{width:7,height:7,borderRadius:"50%",background:PC[story.priority]||"#888",flexShrink:0}}/>
         <span style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",fontWeight:500,flex:1,lineHeight:1.3}}>{story.title}</span>
         {story.points?<span style={{background:"#7c3aed",color:"white",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,fontFamily:"Syne"}}>{story.points}</span>:<span style={{background:"rgba(255,255,255,0.05)",color:"#475569",borderRadius:6,padding:"2px 7px",fontSize:10}}>–</span>}
+        {showDel&&onDelete&&(
+          <button onClick={e=>{e.stopPropagation();onDelete(story.id,columnId);}}
+            style={{width:20,height:20,borderRadius:5,border:"none",background:"rgba(255,77,109,0.25)",color:"#ff4d6d",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,lineHeight:1,flexShrink:0}}
+            title="Remove story">×</button>
+        )}
       </div>
       {story.description&&<div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:5,lineHeight:1.4}}>{story.description}</div>}
       <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{story.tags?.map(t=><span key={t} style={{background:"rgba(255,255,255,0.05)",borderRadius:4,padding:"1px 6px",fontSize:10,color:"#64748b"}}>{t}</span>)}</div>
@@ -365,7 +375,7 @@ const KanbanCard = ({ story, columnId, onDrop }) => {
 // ─────────────────────────────────────────────────────────────
 //  DROP COLUMN
 // ─────────────────────────────────────────────────────────────
-const DropColumn = ({ id, title, stories, color, onDrop, onAdd }) => {
+const DropColumn = ({ id, title, stories, color, onDrop, onAdd, onDelete }) => {
   const [over,setOver]=useState(false);
   const [adding,setAdding]=useState(false);
   const [form,setForm]=useState({title:"",description:"",priority:"medium",tags:""});
@@ -383,7 +393,7 @@ const DropColumn = ({ id, title, stories, color, onDrop, onAdd }) => {
         <span style={{marginLeft:"auto",background:"rgba(255,255,255,0.07)",borderRadius:20,padding:"1px 8px",fontSize:11,color:"#475569"}}>{stories.length}</span>
       </div>
       <div style={{flex:1}}>
-        {stories.map(s=><KanbanCard key={s.id} story={s} columnId={id} onDrop={onDrop}/>)}
+        {stories.map(s=><KanbanCard key={s.id} story={s} columnId={id} onDrop={onDrop} onDelete={onDelete}/>)}
         {stories.length===0&&!adding&&<div style={{textAlign:"center",color:"#1e293b",fontSize:12,marginTop:32,fontFamily:"DM Sans"}}>No stories yet</div>}
       </div>
       {adding?(
@@ -1104,6 +1114,7 @@ export default function SprintVibe() {
   const [stories, setStories]   = useState({ backlog:[], sprint:[], in_progress:[], done:[] });
   const [tab, setTab]           = useState("board");
   const [modal, setModal]       = useState(null);
+  const [toast, setToast]       = useState(null);
   const [participants, setParticipants] = useState([]);
 
   // Real URL — uses your actual Vercel domain so QR codes work on iPhone/Android
@@ -1132,8 +1143,63 @@ export default function SprintVibe() {
     setStories({ backlog:[], sprint:[], in_progress:[], done:[] });
   };
 
-  const drop = (cid,from,to) => { if(from===to)return; setStories(p=>{ const card=p[from]?.find(s=>s.id===cid); if(!card)return p; return{...p,[from]:p[from].filter(s=>s.id!==cid),[to]:[...(p[to]||[]),card]}; }); };
-  const addStory = (col,story) => setStories(p=>({...p,[col]:[...(p[col]||[]),story]}));
+  // ── Story handlers — all synced to Supabase ──────────────
+  const drop = async (cid, from, to) => {
+    if (from === to) return;
+    setStories(p => {
+      const card = p[from]?.find(s => s.id === cid);
+      if (!card) return p;
+      return { ...p, [from]: p[from].filter(s => s.id !== cid), [to]: [...(p[to]||[]), card] };
+    });
+    await moveStory(cid, to).catch(console.error);
+  };
+
+  const addStory = async (col, story) => {
+    setStories(p => ({ ...p, [col]: [...(p[col]||[]), story] }));
+    if (session?.room?.id) await saveStory(session.room.id, story, col).catch(console.error);
+  };
+
+  const removeStory = async (storyId, col) => {
+    setStories(p => ({ ...p, [col]: (p[col]||[]).filter(s => s.id !== storyId) }));
+    await deleteStory(storyId).catch(console.error);
+  };
+
+  // ── Load stories from Supabase on join ───────────────────
+  useEffect(() => {
+    if (!session?.room?.id) return;
+    const load = async () => {
+      try {
+        const data = await getStories(session.room.id);
+        const grouped = { backlog:[], sprint:[], in_progress:[], done:[] };
+        data.forEach(s => {
+          const col = s.column_id || 'backlog';
+          if (grouped[col]) grouped[col].push({ ...s, tags: s.tags || [] });
+          else grouped.backlog.push({ ...s, tags: s.tags || [] });
+        });
+        setStories(grouped);
+      } catch(e) { console.error('load stories:', e); }
+    };
+    load();
+    // Real-time story sync
+    const ch = supabase.channel(`stories:${session.room.id}`)
+      .on('postgres_changes', { event:'*', schema:'public', table:'stories', filter:`room_id=eq.${session.room.id}` }, load)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [session?.room?.id]);
+
+  // ── Notification broadcast subscription ──────────────────
+  useEffect(() => {
+    if (!session?.room?.id) return;
+    const ch = supabase.channel(`notify:${session.room.id}`)
+      .on('broadcast', { event:'session_started' }, ({ payload }) => {
+        if (payload?.userId !== session.userId) {
+          setToast(`🎯 ${payload?.host} started ${payload?.activity}!`);
+          setTimeout(() => setToast(null), 4000);
+        }
+      })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [session?.room?.id]);
 
   // Live participants — loads on join, updates in real time
   useEffect(() => {
@@ -1183,6 +1249,13 @@ export default function SprintVibe() {
 
       <div style={{minHeight:"100vh",background:"#08080f",backgroundImage:"radial-gradient(ellipse 70% 40% at 50% -10%,rgba(124,58,237,0.18) 0%,transparent 60%)",fontFamily:"DM Sans"}}>
 
+        {/* Toast notification */}
+        {toast&&(
+          <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",background:"rgba(13,13,28,0.97)",border:"1px solid rgba(124,58,237,0.4)",borderRadius:12,padding:"10px 18px",zIndex:500,fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",display:"flex",alignItems:"center",gap:10,boxShadow:"0 8px 32px rgba(0,0,0,0.5)",animation:"slideUp 0.3s ease",whiteSpace:"nowrap",maxWidth:"calc(100vw - 32px)"}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:"#7c3aed",boxShadow:"0 0 8px #7c3aed",flexShrink:0}}/>{toast}
+          </div>
+        )}
+
         {/* Header */}
         <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.05)",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",background:"rgba(0,0,0,0.4)",backdropFilter:"blur(16px)",position:"sticky",top:0,zIndex:100}}>
           <div>
@@ -1224,7 +1297,14 @@ export default function SprintVibe() {
         {/* Tabs */}
         <div style={{padding:"12px 16px 0",display:"flex",gap:3,overflowX:"auto"}}>
           {TABS.map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"7px 14px",borderRadius:"10px 10px 0 0",background:tab===t.id?"rgba(124,58,237,0.15)":"transparent",border:`1px solid ${tab===t.id?"rgba(124,58,237,0.3)":"rgba(255,255,255,0.05)"}`,borderBottom:tab===t.id?"1px solid rgba(124,58,237,0.15)":"1px solid rgba(255,255,255,0.05)",color:tab===t.id?"#a78bfa":"#334155",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:12,whiteSpace:"nowrap",flexShrink:0}}>{t.l}</button>
+            <button key={t.id} onClick={async()=>{
+                setTab(t.id);
+                // Notify participants when host starts poker or retro
+                if(session?.role==="host" && (t.id==="poker"||t.id==="retro") && session?.room?.id) {
+                  const label = t.id==="poker"?"Planning Poker 🃏":"Retrospective 🏁";
+                  await broadcastNotification(session.room.id,"session_started",{host:session.displayName,activity:label,userId:session.userId}).catch(()=>{});
+                }
+              }} style={{padding:"7px 14px",borderRadius:"10px 10px 0 0",background:tab===t.id?"rgba(124,58,237,0.15)":"transparent",border:`1px solid ${tab===t.id?"rgba(124,58,237,0.3)":"rgba(255,255,255,0.05)"}`,borderBottom:tab===t.id?"1px solid rgba(124,58,237,0.15)":"1px solid rgba(255,255,255,0.05)",color:tab===t.id?"#a78bfa":"#334155",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:12,whiteSpace:"nowrap",flexShrink:0}}>{t.l}</button>
           ))}
         </div>
 
@@ -1257,7 +1337,7 @@ export default function SprintVibe() {
               </div>
             )}
             <div style={{display:"flex",gap:12,minWidth:820,margin:"0 auto",width:"fit-content"}}>
-              {COLUMNS.map(col=><DropColumn key={col.id} id={col.id} title={col.title} color={col.color} stories={stories[col.id]||[]} onDrop={drop} onAdd={addStory}/>)}
+              {COLUMNS.map(col=><DropColumn key={col.id} id={col.id} title={col.title} color={col.color} stories={stories[col.id]||[]} onDrop={drop} onAdd={addStory} onDelete={removeStory}/>)}
             </div>
           </div>
         )}
