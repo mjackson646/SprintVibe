@@ -21,10 +21,7 @@ const FontLoader = () => {
 };
 
 // ─────────────────────────────────────────────────────────────
-//  ROOM SELECTOR — workspace & room management hub
-// ─────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────
-//  TEAM SELECTOR — simplified: 1 workspace = 1 team = all tools
+//  ROOM SELECTOR — workspace & room management hub (1 workspace = 1 team = all tools)
 // ─────────────────────────────────────────────────────────────
 const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
   const [teams, setTeams]     = useState([]);
@@ -1519,9 +1516,6 @@ const PricingModal = ({ onClose, onUpgrade }) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-//  ANALYTICS VIEW
-// ─────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────
 //  RETRO PREP VIEW — add notes days/weeks before the live retro
 // ─────────────────────────────────────────────────────────────
 const RetroPrepView = ({ session }) => {
@@ -1977,7 +1971,7 @@ const EmailRecap = ({ notes, aiSummary, roomCode }) => {
 // ─────────────────────────────────────────────────────────────
 //  STRIPE PAYMENT MODAL
 // ─────────────────────────────────────────────────────────────
-const StripeModal = ({ onClose }) => {
+const StripeModal = ({ onClose, onUpgradePlan }) => {
   const [selected, setSelected] = useState(null);
   const [step, setStep] = useState("plans"); // plans | checkout | success
 
@@ -2086,7 +2080,7 @@ const StripeModal = ({ onClose }) => {
             <div style={{fontFamily:"DM Sans",fontSize:14,color:"#64748b",lineHeight:1.6,marginBottom:24}}>
               You now have full access to all {selected?.name} features.
             </div>
-            <button onClick={()=>{ onUpgradePlan&&onUpgradePlan(selected?.id||"pro"); onClose(); }}
+            <button onClick={()=>{ onClose(); }}
               style={btn("#7c3aed","white",{padding:"13px 32px",fontSize:14})}>Start using {selected?.name} →</button>
           </div>
         </>)}
@@ -2099,6 +2093,7 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
   const [displayName, setDisplayName] = useState(session?.displayName || "");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
 
@@ -2137,7 +2132,7 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
     try {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
-      setNewPassword(""); setConfirmPassword(""); setCurrentPassword("");
+      setNewPassword(""); setConfirmPassword("");
       setSaveMsg("✓ Password updated!");
       setTimeout(() => setSaveMsg(""), 3000);
     } catch(e) { setSaveMsg(e.message || "Failed to update password"); }
@@ -2456,7 +2451,7 @@ export default function SprintVibe() {
       })
       .subscribe();
     return () => supabase.removeChannel(ch);
-  }, [session?.room?.id, notify]);
+  }, [session?.room?.id]);
 
   // ── Notify when someone joins the room ───────────────────
   useEffect(() => {
@@ -2474,7 +2469,7 @@ export default function SprintVibe() {
         })
       .subscribe();
     return () => supabase.removeChannel(ch);
-  }, [session?.room?.id, notify]);
+  }, [session?.room?.id]);
 
   // Live participants — loads on join, updates in real time
   useEffect(() => {
