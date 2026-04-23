@@ -653,12 +653,29 @@ const RetroView = ({ session, roomUrl }) => {
     const limit = phaseTimeLimits[phaseId];
     return(
       <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:16}}>
-        <span style={{fontFamily:"Syne",fontSize:10,color:"#475569",letterSpacing:1,flexShrink:0}}>⏱ TIME LIMIT</span>
-        {TIMER_PRESETS.map(p=>{
-          const active=limit===p.seconds;
-          return <button key={p.label} onClick={()=>setPhaseTimeLimits(prev=>({...prev,[phaseId]:p.seconds}))} style={{padding:"4px 11px",borderRadius:7,cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:11,background:active?"#7c3aed":"rgba(255,255,255,0.05)",border:`1px solid ${active?"#7c3aed":"rgba(255,255,255,0.08)"}`,color:active?"white":"#64748b",transition:"all 0.15s"}}>{p.label}</button>;
-        })}
-        {limit>0 && <><CountdownRing seconds={timer.remaining} total={limit} label="" warn={60} danger={30}/><button onClick={()=>timer.paused?timer.resume():timer.pause()} style={btn("rgba(255,255,255,0.06)","#94a3b8",{padding:"5px 10px",fontSize:10})}>{timer.paused?"▶":"⏸"}</button></>}
+        {role==="host" ? (
+          // HOST — sees preset chips + pause button
+          <>
+            <span style={{fontFamily:"Syne",fontSize:10,color:"#475569",letterSpacing:1,flexShrink:0}}>⏱ TIME LIMIT</span>
+            {TIMER_PRESETS.map(p=>{
+              const active=limit===p.seconds;
+              return <button key={p.label} onClick={()=>setPhaseTimeLimits(prev=>({...prev,[phaseId]:p.seconds}))} style={{padding:"4px 11px",borderRadius:7,cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:11,background:active?"#7c3aed":"rgba(255,255,255,0.05)",border:`1px solid ${active?"#7c3aed":"rgba(255,255,255,0.08)"}`,color:active?"white":"#64748b",transition:"all 0.15s"}}>{p.label}</button>;
+            })}
+            {limit>0 && <>
+              <CountdownRing seconds={timer.remaining} total={limit} label="" warn={60} danger={30}/>
+              <button onClick={()=>timer.paused?timer.resume():timer.pause()} style={btn("rgba(255,255,255,0.06)","#94a3b8",{padding:"5px 10px",fontSize:10})}>{timer.paused?"▶ Resume":"⏸ Pause"}</button>
+            </>}
+          </>
+        ) : (
+          // PARTICIPANT — sees countdown only, no controls
+          <>
+            <span style={{fontFamily:"Syne",fontSize:10,color:"#475569",letterSpacing:1,flexShrink:0}}>⏱ TIME</span>
+            {limit>0
+              ? <CountdownRing seconds={timer.remaining} total={limit} label="" warn={60} danger={30}/>
+              : <span style={{fontFamily:"DM Sans",fontSize:12,color:"#334155"}}>No time limit set</span>
+            }
+          </>
+        )}
       </div>
     );
   };
@@ -1009,11 +1026,85 @@ const ShareModal = ({ session, roomUrl, onClose }) => {
     </div>
   );
 };
+// ─────────────────────────────────────────────────────────────
+//  SETTINGS VIEW
+// ─────────────────────────────────────────────────────────────
+const SettingsView = ({ session, roomUrl, participants, onShowPricing }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = (text) => { navigator.clipboard?.writeText(text).catch(()=>{}); setCopied(true); setTimeout(()=>setCopied(false),2000); };
+  const ROLE_COLOR = { host:"#7c3aed", participant:"#06d6a0" };
+
+  return(
+    <div style={{padding:"20px 16px 48px",maxWidth:600,margin:"0 auto"}}>
+      <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:4}}>Settings ⚙️</div>
+      <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569",marginBottom:24}}>Room details and team</div>
+
+      {/* ── Who's in the room ── */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
+        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>
+          WHO'S IN THE ROOM ({participants.length})
+        </div>
+        {participants.length===0&&(
+          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#334155",textAlign:"center",padding:"12px 0"}}>No one else has joined yet — share the room code!</div>
+        )}
+        {participants.map(p=>(
+          <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:11}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:p.color||"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:11,color:"white",flexShrink:0}}>
+              {p.avatar||p.display_name?.slice(0,2).toUpperCase()}
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",fontWeight:500}}>
+                {p.display_name}
+                {p.user_id===session.userId&&<span style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginLeft:6}}>(you)</span>}
+              </div>
+              <span style={{fontFamily:"Syne",fontSize:9,fontWeight:700,color:ROLE_COLOR[p.role]||"#64748b",background:`${ROLE_COLOR[p.role]||"#64748b"}22`,borderRadius:4,padding:"1px 6px",textTransform:"uppercase",letterSpacing:1}}>{p.role}</span>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:5}}>
+              <span style={{width:7,height:7,borderRadius:"50%",background:p.online?"#06d6a0":"#334155",boxShadow:p.online?"0 0 6px #06d6a0":"none"}}/>
+              <span style={{fontFamily:"DM Sans",fontSize:11,color:p.online?"#06d6a0":"#334155"}}>{p.online?"Online":"Away"}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Room info ── */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
+        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>ROOM INFO</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:"10px 14px",background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:11}}>
+          <div>
+            <div style={{fontFamily:"DM Sans",fontSize:10,color:"#64748b",marginBottom:3}}>ROOM CODE</div>
+            <div style={{fontFamily:"Syne",fontSize:18,fontWeight:800,color:"#a78bfa",letterSpacing:3}}>{session.room?.code}</div>
+          </div>
+          <button onClick={()=>copy(session.room?.code)} style={btn("rgba(124,58,237,0.3)","#a78bfa",{fontSize:11,padding:"6px 12px"})}>Copy</button>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:11}}>
+          <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",flex:1,wordBreak:"break-all"}}>{roomUrl}</div>
+          <button onClick={()=>copy(roomUrl)} style={btn(copied?"#06d6a0":"rgba(255,255,255,0.08)",copied?"#0d0d1c":"#94a3b8",{padding:"6px 12px",fontSize:11,flexShrink:0})}>{copied?"✓ Copied":"Copy Link"}</button>
+        </div>
+      </div>
+
+      {/* ── Subscription ── */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18}}>
+        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>SUBSCRIPTION</div>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+          <div style={{width:40,height:40,borderRadius:12,background:"rgba(6,214,160,0.15)",border:"1px solid rgba(6,214,160,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🆓</div>
+          <div>
+            <div style={{fontFamily:"Syne",fontSize:14,fontWeight:700,color:"#06d6a0"}}>Solo Plan — Free</div>
+            <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569"}}>3 projects · 5 AI estimates/mo · QR join</div>
+          </div>
+        </div>
+        <button onClick={onShowPricing} style={btn("#7c3aed","white",{width:"100%",padding:"12px",fontSize:13})}>💎 Upgrade Plan</button>
+      </div>
+    </div>
+  );
+};
+
 export default function SprintVibe() {
   const [session, setSession]   = useState(null);
   const [stories, setStories]   = useState({ backlog:[], sprint:[], in_progress:[], done:[] });
   const [tab, setTab]           = useState("board");
   const [modal, setModal]       = useState(null);
+  const [participants, setParticipants] = useState([]);
 
   // Real URL — uses your actual Vercel domain so QR codes work on iPhone/Android
   const roomUrl = session
@@ -1044,6 +1135,20 @@ export default function SprintVibe() {
   const drop = (cid,from,to) => { if(from===to)return; setStories(p=>{ const card=p[from]?.find(s=>s.id===cid); if(!card)return p; return{...p,[from]:p[from].filter(s=>s.id!==cid),[to]:[...(p[to]||[]),card]}; }); };
   const addStory = (col,story) => setStories(p=>({...p,[col]:[...(p[col]||[]),story]}));
 
+  // Live participants — loads on join, updates in real time
+  useEffect(() => {
+    if (!session?.room?.id) return;
+    const load = async () => {
+      const { data } = await supabase.from("participants").select("*").eq("room_id", session.room.id).order("joined_at");
+      if (data) setParticipants(data);
+    };
+    load();
+    const ch = supabase.channel(`participants:${session.room.id}`)
+      .on("postgres_changes", { event:"*", schema:"public", table:"participants", filter:`room_id=eq.${session.room.id}` }, load)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [session?.room?.id]);
+
   const allPts  = Object.values(stories).flat().reduce((a,s)=>a+(parseInt(s.points)||0),0);
   const donePts = (stories.done||[]).reduce((a,s)=>a+(parseInt(s.points)||0),0);
   const prog    = allPts ? Math.round(donePts/allPts*100) : 0;
@@ -1053,6 +1158,7 @@ export default function SprintVibe() {
     { id:"poker",     l:"🃏 Poker"     },
     { id:"retro",     l:"🏁 Retro"     },
     { id:"analytics", l:"📊 Analytics" },
+    { id:"settings",  l:"⚙️ Settings"  },
   ];
 
   // Show onboarding if no session
@@ -1092,10 +1198,18 @@ export default function SprintVibe() {
             </div>
           )}
 
-          {/* Right side — share, pricing, user, leave */}
+          {/* Right side — share, participants count, user, leave */}
           <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-            <button onClick={()=>setModal("share")}   style={btn("#7c3aed","white",{padding:"6px 12px",fontSize:11})}>📱 Share</button>
-            <button onClick={()=>setModal("pricing")} style={btn("rgba(255,255,255,0.06)","#94a3b8",{padding:"6px 12px",fontSize:11})}>💎 Pricing</button>
+            <button onClick={()=>setModal("share")} style={btn("#7c3aed","white",{padding:"6px 12px",fontSize:11})}>📱 Share</button>
+            {/* Live participant avatars */}
+            <div style={{display:"flex",alignItems:"center"}}>
+              {participants.slice(0,4).map((p,i)=>(
+                <div key={p.id} title={p.display_name} style={{width:26,height:26,borderRadius:"50%",background:p.color||"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:9,color:"white",border:"2px solid #08080f",marginLeft:i>0?-8:0,zIndex:10-i}}>
+                  {p.avatar||p.display_name?.slice(0,2).toUpperCase()}
+                </div>
+              ))}
+              {participants.length>0&&<span style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginLeft:8}}>{participants.length} in room</span>}
+            </div>
             <div style={{display:"flex",alignItems:"center",gap:7,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:"5px 10px"}}>
               <div style={{width:22,height:22,borderRadius:"50%",background:session.color,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:9,color:"white"}}>
                 {session.displayName.slice(0,2).toUpperCase()}
@@ -1117,6 +1231,24 @@ export default function SprintVibe() {
         {/* Content */}
         {tab==="board"&&(
           <div style={{padding:"16px 16px 48px",overflowX:"auto"}}>
+
+            {/* Who's in the room — always visible on board */}
+            {participants.length>0&&(
+              <div style={{marginBottom:16,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                <span style={{fontFamily:"Syne",fontSize:10,color:"#475569",letterSpacing:1,flexShrink:0}}>IN ROOM</span>
+                {participants.map(p=>(
+                  <div key={p.id} style={{display:"flex",alignItems:"center",gap:7,background:"rgba(255,255,255,0.04)",borderRadius:9,padding:"5px 10px"}}>
+                    <div style={{width:22,height:22,borderRadius:"50%",background:p.color||"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:9,color:"white",flexShrink:0}}>
+                      {p.avatar||p.display_name?.slice(0,2).toUpperCase()}
+                    </div>
+                    <span style={{fontFamily:"DM Sans",fontSize:12,color:"#e2e8f0"}}>{p.display_name}</span>
+                    {p.role==="host"&&<span style={{fontFamily:"Syne",fontSize:8,color:"#7c3aed",background:"rgba(124,58,237,0.15)",borderRadius:4,padding:"1px 5px"}}>HOST</span>}
+                    <span style={{width:6,height:6,borderRadius:"50%",background:p.online?"#06d6a0":"#334155",boxShadow:p.online?"0 0 5px #06d6a0":"none"}}/>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {Object.values(stories).flat().length===0&&(
               <div style={{textAlign:"center",padding:"48px 20px",maxWidth:400,margin:"0 auto"}}>
                 <div style={{fontSize:40,marginBottom:12}}>📋</div>
@@ -1132,6 +1264,7 @@ export default function SprintVibe() {
         {tab==="poker"     &&<PokerSession  stories={stories} session={session} roomUrl={roomUrl}/>}
         {tab==="retro"     &&<RetroView     session={session} roomUrl={roomUrl}/>}
         {tab==="analytics" &&<AnalyticsView stories={stories} session={session}/>}
+        {tab==="settings"  &&<SettingsView  session={session} roomUrl={roomUrl} participants={participants} onShowPricing={()=>setModal("pricing")}/>}
 
         {/* Modals */}
         {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)}/>}
