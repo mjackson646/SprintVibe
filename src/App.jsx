@@ -1845,8 +1845,11 @@ export default function SprintVibe() {
     }
   };
 
-  // Update session everywhere (name changes, etc.)
-  const handleUpdateSession = (updatedSession) => {
+  const goTo = (newScreen, mode="welcome") => {
+    window.scrollTo(0, 0);
+    setSigninMode(mode);
+    setScreen(newScreen);
+  };
     setSession(updatedSession);
     try { localStorage.setItem("sprintvibe_session", JSON.stringify(updatedSession)); } catch(e) {}
   };
@@ -2030,9 +2033,9 @@ export default function SprintVibe() {
       <FontLoader/>
       <style>{STYLES}</style>
       <LandingPage
-        onGetStarted={()=>setScreen("onboarding")}
-        onJoin={()=>setScreen("onboarding")}
-        onSignIn={()=>{ setSigninMode("login"); setScreen("onboarding"); }}
+        onGetStarted={()=>goTo("onboarding","welcome")}
+        onJoin={()=>goTo("onboarding","join")}
+        onSignIn={()=>goTo("onboarding","login")}
       />
     </>
   );
@@ -2042,11 +2045,22 @@ export default function SprintVibe() {
     <>
       <FontLoader/>
       <style>{STYLES}</style>
-      <div style={{minHeight:"100vh",background:"#08080f",backgroundImage:"radial-gradient(ellipse 70% 40% at 50% -10%,rgba(124,58,237,0.18) 0%,transparent 60%)"}}>
-        <div style={{textAlign:"center",padding:"20px 0 0"}}>
-          <button onClick={()=>{ setSigninMode("welcome"); setScreen("landing"); }} style={{background:"none",border:"none",color:"#475569",cursor:"pointer",fontFamily:"Syne",fontSize:12,fontWeight:700}}>← Back to home</button>
+      <div style={{minHeight:"100vh",background:"#08080f",display:"flex",flexDirection:"column"}}>
+        {/* Full page nav — matches landing page style */}
+        <nav style={{padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.06)",background:"rgba(8,8,15,0.95)",backdropFilter:"blur(16px)",position:"sticky",top:0,zIndex:100}}>
+          <button onClick={()=>{ goTo("landing"); }}
+            style={{fontFamily:"Syne",fontWeight:800,fontSize:20,letterSpacing:-0.5,background:"none",border:"none",cursor:"pointer",color:"white",padding:0}}>
+            Sprint<span style={{color:"#7c3aed"}}>Vibe</span>
+          </button>
+          <button onClick={()=>{ goTo("landing"); }}
+            style={{background:"none",border:"none",color:"#475569",cursor:"pointer",fontFamily:"Syne",fontSize:13,fontWeight:700}}>
+            ← Back
+          </button>
+        </nav>
+        {/* Full page content — no gradient overlay, clean background */}
+        <div style={{flex:1,background:"#08080f",backgroundImage:"radial-gradient(ellipse 60% 40% at 50% 0%,rgba(124,58,237,0.14) 0%,transparent 60%)"}}>
+          <Onboarding onEnter={handleEnter} initialMode={signinMode}/>
         </div>
-        <Onboarding onEnter={handleEnter} initialMode={signinMode}/>
       </div>
       {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/>}
       {modal==="stripe"&&<StripeModal onClose={()=>setModal(null)}/>}
