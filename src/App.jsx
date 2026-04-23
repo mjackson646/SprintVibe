@@ -21,6 +21,250 @@ const FontLoader = () => {
 };
 
 // ─────────────────────────────────────────────────────────────
+//  ROOM SELECTOR — workspace & room management hub
+// ─────────────────────────────────────────────────────────────
+const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
+  const [workspaces, setWorkspaces] = useState([]);
+  const [recentRooms, setRecentRooms] = useState([]);
+  const [creating, setCreating] = useState(false);
+  const [newWsName, setNewWsName] = useState("");
+  const [joiningCode, setJoiningCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [activeWs, setActiveWs] = useState(null);
+  const [showNewRoom, setShowNewRoom] = useState(false);
+  const userId = session?.userId || `guest_${Date.now()}`;
+  const displayName = session?.displayName || "You";
+  const color = session?.color || "#7c3aed";
+
+  const ROOM_TYPES = [
+    { type:"board",  icon:"📋", label:"Kanban Board",    desc:"Sprint tracking & story management" },
+    { type:"poker",  icon:"🃏", label:"Planning Poker",  desc:"Estimate stories with your team" },
+    { type:"retro",  icon:"🏁", label:"Retrospective",   desc:"Review what went well and improve" },
+  ];
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      // Load workspaces owned by or member of
+      const { data: ws } = await supabase.from("workspaces").select("*").eq("owner_id", userId).order("created_at", {ascending:false});
+      if (ws) setWorkspaces(ws);
+      if (ws?.length > 0 && !activeWs) setActiveWs(ws[0]);
+
+      // Load recent rooms
+      const { data: rooms } = await supabase.from("rooms").select("*").eq("host_id", userId).eq("active", true).order("created_at", {ascending:false}).limit(10);
+      if (rooms) setRecentRooms(rooms);
+    } catch(e) { console.error(e); }
+  };
+
+  const createWorkspace = async () => {
+    if (!newWsName.trim()) return;
+    setLoading(true);
+    try {
+      const { data: ws } = await supabase.from("workspaces").insert({ name: newWsName.trim(), owner_id: userId, plan:"free" }).select().single();
+      if (ws) { setWorkspaces(p=>[ws,...p]); setActiveWs(ws); setNewWsName(""); setCreating(false); }
+    } catch(e) { setError("Could not create workspace"); }
+    finally { setLoading(false); }
+  };
+
+  const createRoom = async (type) => {
+    setLoading(true); setError("");
+    try {
+      const prefix = type==="poker"?"POKER":type==="retro"?"RETRO":"BOARD";
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let code = prefix + "-";
+      for (let i=0;i<4;i++) code += chars[Math.floor(Math.random()*chars.length)];
+
+      const { data: room } = await supabase.from("rooms")
+        .insert({ code, type, host_id: userId, phase:"lobby" }).select().single();
+
+      // Link room to workspace if one is active
+      if (activeWs && room) {
+        await supabase.from("workspace_rooms").insert({ workspace_id: activeWs.id, room_id: room.id }).catch(()=>{});
+      }
+
+      if (room) {
+        await supabase.from("participants").upsert({
+          room_id: room.id, user_id: userId, display_name: displayName,
+          avatar: displayName.slice(0,2).toUpperCase(), color, role:"host", online:true
+        }, { onConflict:"room_id,user_id" });
+        onEnterRoom({ userId, displayName, color, room, role:"host", user: session?.user });
+      }
+    } catch(e) { setError("Could not create room"); }
+    finally { setLoading(false); setShowNewRoom(false); }
+  };
+
+  const joinByCode = async () => {
+    if (!joiningCode.trim()) return;
+    setLoading(true); setError("");
+    try {
+      const { data: room, error: rErr } = await supabase.from("rooms").select("*").eq("code", joiningCode.trim().toUpperCase()).eq("active", true).single();
+      if (rErr || !room) throw new Error("Room not found");
+      await supabase.from("participants").upsert({
+        room_id: room.id, user_id: userId, display_name: displayName,
+        avatar: displayName.slice(0,2).toUpperCase(), color, role:"participant", online:true
+      }, { onConflict:"room_id,user_id" });
+      onEnterRoom({ userId, displayName, color, room, role:"participant", user: session?.user });
+    } catch(e) { setError("Room not found — check the code"); }
+    finally { setLoading(false); }
+  };
+
+  const TYPE_COLOR = { board:"#ffd166", poker:"#7c3aed", retro:"#06d6a0" };
+  const TYPE_ICON  = { board:"📋", poker:"🃏", retro:"🏁" };
+
+  return(
+    <div style={{minHeight:"100vh",background:"#08080f",display:"flex",flexDirection:"column"}}>
+      {/* Header */}
+      <div style={{padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.06)",display:"flex",alignItems:"center",gap:12,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(16px)"}}>
+        <button onClick={onGoHome} style={{fontFamily:"Syne",fontWeight:800,fontSize:18,color:"white",background:"none",border:"none",cursor:"pointer",letterSpacing:-0.5,padding:0}}>
+          Sprint<span style={{color:"#7c3aed"}}>Vibe</span>
+        </button>
+        <div style={{flex:1}}/>
+        <div style={{display:"flex",alignItems:"center",gap:7,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:"5px 10px"}}>
+          <div style={{width:22,height:22,borderRadius:"50%",background:color,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:9,color:"white"}}>
+            {displayName.slice(0,2).toUpperCase()}
+          </div>
+          <span style={{fontFamily:"DM Sans",fontSize:12,color:"#e2e8f0"}}>{displayName}</span>
+        </div>
+        <button onClick={onSignOut} style={btn("rgba(255,77,109,0.15)","#ff4d6d",{padding:"6px 12px",fontSize:11})}>Sign Out</button>
+      </div>
+
+      <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+
+        {/* ── LEFT SIDEBAR — Workspaces ── */}
+        <div style={{width:220,borderRight:"1px solid rgba(255,255,255,0.06)",background:"rgba(255,255,255,0.015)",display:"flex",flexDirection:"column",flexShrink:0}}>
+          <div style={{padding:"16px 14px 10px",fontFamily:"Syne",fontSize:10,color:"#475569",letterSpacing:2}}>WORKSPACES</div>
+
+          {workspaces.map(ws=>(
+            <button key={ws.id} onClick={()=>setActiveWs(ws)}
+              style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:activeWs?.id===ws.id?"rgba(124,58,237,0.15)":"transparent",border:"none",borderLeft:`3px solid ${activeWs?.id===ws.id?"#7c3aed":"transparent"}`,cursor:"pointer",textAlign:"left",width:"100%",transition:"all 0.15s"}}>
+              <div style={{width:30,height:30,borderRadius:9,background:`linear-gradient(135deg,#7c3aed,#5b21b6)`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:12,color:"white",flexShrink:0}}>
+                {ws.name.slice(0,1).toUpperCase()}
+              </div>
+              <div style={{flex:1,overflow:"hidden"}}>
+                <div style={{fontFamily:"DM Sans",fontSize:12,fontWeight:600,color:"#e2e8f0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ws.name}</div>
+                <div style={{fontFamily:"DM Sans",fontSize:10,color:"#475569",textTransform:"capitalize"}}>{ws.plan} plan</div>
+              </div>
+            </button>
+          ))}
+
+          {/* Add workspace */}
+          {creating ? (
+            <div style={{padding:"10px 14px"}}>
+              <input value={newWsName} onChange={e=>setNewWsName(e.target.value)} placeholder="Team name..." autoFocus
+                onKeyDown={e=>e.key==="Enter"&&createWorkspace()}
+                style={{...inp(),fontSize:12,marginBottom:6}}/>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={createWorkspace} disabled={loading} style={btn("#7c3aed","white",{flex:1,padding:"6px",fontSize:11})}>Create</button>
+                <button onClick={()=>setCreating(false)} style={btn("rgba(255,255,255,0.06)","#64748b",{padding:"6px 8px",fontSize:11})}>✕</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={()=>setCreating(true)}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"none",border:"none",cursor:"pointer",color:"#334155",fontFamily:"DM Sans",fontSize:12,width:"100%",transition:"color 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.color="#7c3aed"} onMouseLeave={e=>e.currentTarget.style.color="#334155"}>
+              + New Workspace
+            </button>
+          )}
+        </div>
+
+        {/* ── MAIN CONTENT ── */}
+        <div style={{flex:1,overflowY:"auto",padding:"24px 24px 48px"}}>
+
+          {/* Workspace header */}
+          <div style={{marginBottom:24}}>
+            <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:4}}>
+              {activeWs ? activeWs.name : "My Rooms"}
+            </div>
+            <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>
+              {activeWs ? "Manage rooms for this team" : "All your recent rooms"}
+            </div>
+          </div>
+
+          {/* Create new room */}
+          <div style={{marginBottom:28}}>
+            <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:2,marginBottom:12}}>START A SESSION</div>
+            {showNewRoom ? (
+              <div style={{background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:16,padding:20,marginBottom:16}}>
+                <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"white",marginBottom:14}}>Choose session type:</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
+                  {ROOM_TYPES.map(r=>(
+                    <button key={r.type} onClick={()=>createRoom(r.type)} disabled={loading}
+                      style={{background:`${TYPE_COLOR[r.type]}11`,border:`1.5px solid ${TYPE_COLOR[r.type]}33`,borderRadius:14,padding:"16px 14px",cursor:"pointer",textAlign:"left",transition:"all 0.2s"}}
+                      onMouseEnter={e=>{e.currentTarget.style.background=`${TYPE_COLOR[r.type]}22`;e.currentTarget.style.borderColor=TYPE_COLOR[r.type];}}
+                      onMouseLeave={e=>{e.currentTarget.style.background=`${TYPE_COLOR[r.type]}11`;e.currentTarget.style.borderColor=`${TYPE_COLOR[r.type]}33`;}}>
+                      <div style={{fontSize:24,marginBottom:8}}>{r.icon}</div>
+                      <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"white",marginBottom:3}}>{r.label}</div>
+                      <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",lineHeight:1.4}}>{r.desc}</div>
+                    </button>
+                  ))}
+                </div>
+                <button onClick={()=>setShowNewRoom(false)} style={{marginTop:12,background:"none",border:"none",color:"#475569",cursor:"pointer",fontFamily:"DM Sans",fontSize:12}}>Cancel</button>
+              </div>
+            ) : (
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                <button onClick={()=>setShowNewRoom(true)}
+                  style={btn("#7c3aed","white",{padding:"11px 20px",fontSize:13,borderRadius:12})}>
+                  + Create New Room
+                </button>
+                <div style={{display:"flex",gap:8,alignItems:"center",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"8px 12px",flex:1,minWidth:200}}>
+                  <input value={joiningCode} onChange={e=>setJoiningCode(e.target.value.toUpperCase())}
+                    placeholder="Join by code e.g. BOARD-7X9P"
+                    style={{background:"none",border:"none",color:"white",fontFamily:"Syne",fontSize:13,letterSpacing:1,outline:"none",flex:1}}
+                    onKeyDown={e=>e.key==="Enter"&&joinByCode()}/>
+                  <button onClick={joinByCode} disabled={loading} style={btn("#06d6a0","#0d0d1c",{padding:"6px 12px",fontSize:11,flexShrink:0})}>Join</button>
+                </div>
+              </div>
+            )}
+            {error&&<div style={{fontFamily:"DM Sans",fontSize:12,color:"#ff4d6d",marginTop:8}}>{error}</div>}
+          </div>
+
+          {/* Recent rooms */}
+          <div>
+            <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:2,marginBottom:14}}>RECENT ROOMS</div>
+            {recentRooms.length===0 ? (
+              <div style={{background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.07)",borderRadius:14,padding:"32px 20px",textAlign:"center"}}>
+                <div style={{fontSize:28,marginBottom:8}}>📭</div>
+                <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"#334155",marginBottom:4}}>No rooms yet</div>
+                <div style={{fontFamily:"DM Sans",fontSize:12,color:"#1e293b"}}>Create your first room above</div>
+              </div>
+            ) : (
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12}}>
+                {recentRooms.map(r=>(
+                  <button key={r.id} onClick={async()=>{
+                      setLoading(true);
+                      try {
+                        await supabase.from("participants").upsert({
+                          room_id:r.id, user_id:userId, display_name:displayName,
+                          avatar:displayName.slice(0,2).toUpperCase(), color, role:"host", online:true
+                        }, {onConflict:"room_id,user_id"});
+                        onEnterRoom({userId,displayName,color,room:r,role:"host",user:session?.user});
+                      } catch(e){} finally{setLoading(false);}
+                    }}
+                    style={{background:"rgba(255,255,255,0.03)",border:`1px solid rgba(255,255,255,0.07)`,borderRadius:14,padding:"16px",cursor:"pointer",textAlign:"left",transition:"all 0.2s",borderTop:`3px solid ${TYPE_COLOR[r.type]||"#7c3aed"}`}}
+                    onMouseEnter={e=>{e.currentTarget.style.background="rgba(124,58,237,0.08)";e.currentTarget.style.borderColor="#7c3aed";}}
+                    onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.03)";e.currentTarget.style.borderColor="rgba(255,255,255,0.07)";}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                      <span style={{fontSize:18}}>{TYPE_ICON[r.type]||"📋"}</span>
+                      <span style={{fontFamily:"Syne",fontSize:10,color:TYPE_COLOR[r.type]||"#7c3aed",letterSpacing:1,fontWeight:700}}>{r.type?.toUpperCase()}</span>
+                    </div>
+                    <div style={{fontFamily:"Syne",fontSize:15,fontWeight:800,color:"white",letterSpacing:1,marginBottom:4}}>{r.code}</div>
+                    <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569"}}>{new Date(r.created_at).toLocaleDateString()}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
 //  RESET PASSWORD PAGE
 // ─────────────────────────────────────────────────────────────
 const ResetPasswordPage = ({ onDone }) => {
@@ -1966,11 +2210,12 @@ export default function SprintVibe() {
   };
 
   const handleLeave = async () => {
-    if (session) await leaveRoom(session.room.id, session.userId).catch(()=>{});
+    if (session?.room?.id) await leaveRoom(session.room.id, session.userId).catch(()=>{});
     setSession(null);
     setStories({ backlog:[], sprint:[], in_progress:[], done:[] });
-    setScreen("landing");
+    setParticipants([]);
     try { localStorage.removeItem("sprintvibe_session"); } catch(e) {}
+    setScreen("roomselector"); // Go to room selector, not landing
   };
 
   const handleSignOut = async () => {
@@ -2092,7 +2337,6 @@ export default function SprintVibe() {
     { id:"poker",     l:"🃏 Poker"     },
     { id:"retro",     l:"🏁 Retro"     },
     { id:"analytics", l:"📊 Analytics" },
-    { id:"settings",  l:"⚙️ Settings"  },
   ];
 
   const STYLES = `*{-webkit-tap-highlight-color:transparent;}body{margin:0;background:#08080f;}@keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}@keyframes flipIn{from{opacity:0;transform:rotateY(90deg)}to{opacity:1;transform:rotateY(0)}}@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}@keyframes noteIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}select option{background:#0d0d1c}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(124,58,237,0.3);border-radius:2px}input,textarea,select{-webkit-appearance:none;}`;
@@ -2104,6 +2348,20 @@ export default function SprintVibe() {
       <FontLoader/>
       <style>{STYLES}</style>
       <ResetPasswordPage onDone={()=>goTo("landing")}/>
+    </>
+  );
+
+  // ── ROOM SELECTOR ─────────────────────────────────────────
+  if (screen === "roomselector") return(
+    <>
+      <FontLoader/>
+      <style>{STYLES}</style>
+      <RoomSelector
+        session={session}
+        onEnterRoom={handleEnter}
+        onSignOut={handleSignOut}
+        onGoHome={()=>goTo("landing")}
+      />
     </>
   );
 
@@ -2208,7 +2466,11 @@ export default function SprintVibe() {
               <span style={{fontFamily:"DM Sans",fontSize:12,color:"#e2e8f0"}}>{session.displayName}</span>
               {session.role==="host"&&<span style={{fontFamily:"Syne",fontSize:9,color:"#7c3aed",background:"rgba(124,58,237,0.15)",borderRadius:4,padding:"1px 5px"}}>HOST</span>}
             </div>
-            <button onClick={handleLeave} style={btn("rgba(255,255,255,0.06)","#64748b",{padding:"6px 12px",fontSize:11})}>Leave Room</button>
+            {/* Settings gear icon */}
+            <button onClick={()=>setModal("settings")}
+              style={{width:34,height:34,borderRadius:10,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.08)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}
+              title="Settings">⚙️</button>
+            <button onClick={handleLeave} style={btn("rgba(255,255,255,0.06)","#64748b",{padding:"6px 12px",fontSize:11})}>← Rooms</button>
             <button onClick={handleSignOut} style={btn("rgba(255,77,109,0.15)","#ff4d6d",{padding:"6px 12px",fontSize:11})}>Sign Out</button>
           </div>
         </div>
@@ -2263,22 +2525,32 @@ export default function SprintVibe() {
         {tab==="poker"     &&<PokerSession  stories={stories} session={session} roomUrl={roomUrl}/>}
         {tab==="retro"     &&<RetroView     session={session} roomUrl={roomUrl}/>}
         {tab==="analytics" &&<AnalyticsView stories={stories} session={session}/>}
-        {tab==="settings"  &&<SettingsView
-          session={session}
-          onShowPricing={()=>setModal("stripe")}
-          pushPermission={permission}
-          notificationsEnabled={notificationsEnabled}
-          onToggleNotifications={handleToggleNotifications}
-          onEnableNotifications={requestPermission}
-          onDisableNotifications={()=>setNotificationsEnabled(false)}
-          onSignOut={handleSignOut}
-          onUpdateSession={handleUpdateSession}
-        />}
 
         {/* Modals */}
-        {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/> }
-        {modal==="share"  &&<ShareModal session={session} roomUrl={roomUrl} onClose={()=>setModal(null)}/>}
-        {modal==="stripe" &&<StripeModal onClose={()=>setModal(null)}/>}
+        {modal==="pricing"  &&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/> }
+        {modal==="share"    &&<ShareModal session={session} roomUrl={roomUrl} onClose={()=>setModal(null)}/>}
+        {modal==="stripe"   &&<StripeModal onClose={()=>setModal(null)}/>}
+        {modal==="settings" &&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:300,display:"flex",justifyContent:"flex-end"}} onClick={()=>setModal(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{width:"min(420px,100vw)",height:"100vh",background:"#0d0d1c",borderLeft:"1px solid rgba(255,255,255,0.07)",overflowY:"auto"}}>
+              <div style={{padding:"16px 20px",borderBottom:"1px solid rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{fontFamily:"Syne",fontWeight:800,fontSize:16,color:"white"}}>⚙️ Settings</div>
+                <button onClick={()=>setModal(null)} style={{background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:20,lineHeight:1}}>×</button>
+              </div>
+              <SettingsView
+                session={session}
+                onShowPricing={()=>setModal("stripe")}
+                pushPermission={permission}
+                notificationsEnabled={notificationsEnabled}
+                onToggleNotifications={handleToggleNotifications}
+                onEnableNotifications={requestPermission}
+                onDisableNotifications={()=>setNotificationsEnabled(false)}
+                onSignOut={handleSignOut}
+                onUpdateSession={handleUpdateSession}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
