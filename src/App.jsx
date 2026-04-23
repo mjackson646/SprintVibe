@@ -1542,12 +1542,6 @@ const PricingModal = ({ onClose, onUpgrade }) => {
               <button onClick={()=>{ if(p.price>0){ onClose(); onUpgrade&&onUpgrade(p.id); }}}
                 style={btn(p.hl?"#7c3aed":"rgba(255,255,255,0.05)",p.hl?"white":"#64748b",{width:"100%",padding:"9px",marginTop:14})}>
                 {p.price===0?"Current Free Plan":"Upgrade to "+p.name+" →"}
-              </div>
-              <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",margin:"7px 0 12px",lineHeight:1.4}}>{p.desc}</div>
-              {p.features.map(f=><div key={f} style={{fontFamily:"DM Sans",fontSize:11,color:"#94a3b8",marginBottom:5,display:"flex",gap:6}}><span style={{color:p.color}}>✓</span>{f}</div>)}
-              <button onClick={()=>{ if(p.price>0){ onClose(); onUpgrade&&onUpgrade(); }}}
-                style={btn(p.hl?"#7c3aed":"rgba(255,255,255,0.05)",p.hl?"white":"#64748b",{width:"100%",padding:"9px",marginTop:14})}>
-                {p.price===0?"Get Started Free":"Subscribe Now →"}
               </button>
             </div>
           ))}
