@@ -171,11 +171,10 @@ const QRJoinBanner = ({ roomCode, url, participants=[] }) => {
 //  ONBOARDING SCREEN — shown before anything else
 // ─────────────────────────────────────────────────────────────
 const Onboarding = ({ onEnter }) => {
-  // Read ?join=CODE from URL immediately
   const urlCode = new URLSearchParams(window.location.search).get("join") || "";
-
   const [mode, setMode] = useState(urlCode ? "join" : "welcome");
   const [name, setName] = useState("");
+  const [guestEmail, setGuestEmail] = useState(""); // for recap emails
   const [roomCode, setRoomCode] = useState(urlCode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -190,13 +189,13 @@ const Onboarding = ({ onEnter }) => {
       const color  = COLORS[Math.floor(Math.random()*COLORS.length)];
       if (type === "create") {
         const room = await createRoom("board", userId);
-        await joinRoom(room.id, userId, name.trim(), "host");
-        onEnter({ userId, displayName:name.trim(), color, room, role:"host" });
+        await joinRoom(room.id, userId, name.trim(), "host", guestEmail.trim());
+        onEnter({ userId, displayName:name.trim(), color, room, role:"host", email:guestEmail.trim() });
       } else {
         if (!roomCode.trim()) { setError("Please enter a room code"); setLoading(false); return; }
         const room = await findRoom(roomCode.trim());
-        await joinRoom(room.id, userId, name.trim(), "participant");
-        onEnter({ userId, displayName:name.trim(), color, room, role:"participant" });
+        await joinRoom(room.id, userId, name.trim(), "participant", guestEmail.trim());
+        onEnter({ userId, displayName:name.trim(), color, room, role:"participant", email:guestEmail.trim() });
       }
     } catch(e) {
       setError(type==="join" ? "Room not found — check the code and try again" : "Something went wrong. Please try again.");
@@ -281,6 +280,10 @@ const Onboarding = ({ onEnter }) => {
       <div style={{marginBottom:14}}>
         <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:6}}>Your name</div>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Alex" style={inp()} autoFocus/>
+      </div>
+      <div style={{marginBottom:14}}>
+        <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:6}}>Email <span style={{color:"#334155"}}>(optional — for retro recaps)</span></div>
+        <input value={guestEmail} onChange={e=>setGuestEmail(e.target.value)} placeholder="you@example.com" type="email" style={inp()}/>
       </div>
 
       {/* Only show room code input if NOT coming from QR */}
@@ -858,9 +861,12 @@ const RetroView = ({ session, roomUrl }) => {
       ):(
         <button onClick={getAI} disabled={aiLoading} style={btn("rgba(124,58,237,0.18)","#a78bfa",{width:"100%",padding:"12px",border:"1px solid rgba(124,58,237,0.3)",marginBottom:16})}>{aiLoading?"✨ Generating…":"✨ Generate AI Coach Summary"}</button>
       )}
-      <div style={{display:"flex",gap:10}}>
+
+      {/* Email Recap — send to everyone */}
+      <EmailRecap notes={notes} aiSummary={aiSummary} roomCode={room?.code}/>
+
+      <div style={{display:"flex",gap:10,marginTop:12}}>
         <button onClick={()=>advancePhase("lobby")} style={btn("rgba(255,255,255,0.06)","#64748b",{flex:1,padding:"12px"})}>Start New Retro</button>
-        <button style={btn("#7c3aed","white",{flex:1,padding:"12px"})}>Export Results</button>
       </div>
     </div>
   );
@@ -870,16 +876,16 @@ const RetroView = ({ session, roomUrl }) => {
 // ─────────────────────────────────────────────────────────────
 //  PRICING MODAL
 // ─────────────────────────────────────────────────────────────
-const PricingModal = ({ onClose }) => {
+const PricingModal = ({ onClose, onUpgrade }) => {
   const [annual, setAnnual] = useState(false);
   const plans = [
-    { name:"Solo", price:0, color:"#06d6a0", desc:"Solo creators, artists & indie devs",
+    { id:"solo",      name:"Solo",      price:0,           color:"#06d6a0", desc:"Solo creators, artists & indie devs",
       features:["3 projects","Planning poker","Retrospectives","QR join","5 AI estimates/mo"] },
-    { name:"Pro", price:annual?59:7, color:"#7c3aed", hl:true, desc:"Freelancers & small teams (≤5)",
+    { id:"pro",       name:"Pro",       price:annual?59:7,  color:"#7c3aed", hl:true, desc:"Freelancers & small teams (≤5)",
       features:["Unlimited projects","All Solo features","Unlimited AI estimates","Notion/Jira/Linear export","Slack integration","Custom room branding"] },
-    { name:"Team", price:annual?159:19, color:"#ffd166", desc:"Growing teams up to 20",
+    { id:"team",      name:"Team",      price:annual?159:19, color:"#ffd166", desc:"Growing teams up to 20",
       features:["Everything in Pro","20 members","Analytics dashboard","Priority support","Custom workflows","Session history"] },
-    { name:"Corporate", price:annual?399:49, color:"#ff4d6d", desc:"Enterprise & agencies",
+    { id:"corporate", name:"Corporate", price:annual?399:49, color:"#ff4d6d", desc:"Enterprise & agencies",
       features:["Unlimited members","SSO / SAML","Dedicated success mgr","Custom branding","SLA guarantee","On-premise option"] },
   ];
   return(
@@ -889,7 +895,6 @@ const PricingModal = ({ onClose }) => {
           <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:2,marginBottom:7}}>PRICING</div>
           <div style={{fontFamily:"Syne",fontSize:26,fontWeight:800,color:"white",marginBottom:7}}>Built for Everyone</div>
           <div style={{fontFamily:"DM Sans",color:"#475569",fontSize:13,marginBottom:16}}>From solo artists to Fortune 500 — no one gets priced out</div>
-          {/* Annual toggle */}
           <div style={{display:"flex",alignItems:"center",gap:10,justifyContent:"center"}}>
             <span style={{fontFamily:"DM Sans",fontSize:12,color:annual?"#475569":"white"}}>Monthly</span>
             <div onClick={()=>setAnnual(a=>!a)} style={{width:44,height:24,borderRadius:12,background:annual?"#7c3aed":"rgba(255,255,255,0.1)",cursor:"pointer",position:"relative",transition:"all 0.2s"}}>
@@ -909,13 +914,14 @@ const PricingModal = ({ onClose }) => {
               </div>
               <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",margin:"7px 0 12px",lineHeight:1.4}}>{p.desc}</div>
               {p.features.map(f=><div key={f} style={{fontFamily:"DM Sans",fontSize:11,color:"#94a3b8",marginBottom:5,display:"flex",gap:6}}><span style={{color:p.color}}>✓</span>{f}</div>)}
-              <button style={btn(p.hl?"#7c3aed":"rgba(255,255,255,0.05)",p.hl?"white":"#64748b",{width:"100%",padding:"9px",marginTop:14})}>
-                {p.price===0?"Get Started Free":"Subscribe Now"}
+              <button onClick={()=>{ if(p.price>0){ onClose(); onUpgrade&&onUpgrade(); }}}
+                style={btn(p.hl?"#7c3aed":"rgba(255,255,255,0.05)",p.hl?"white":"#64748b",{width:"100%",padding:"9px",marginTop:14})}>
+                {p.price===0?"Get Started Free":"Subscribe Now →"}
               </button>
             </div>
           ))}
         </div>
-        <div style={{textAlign:"center",fontFamily:"DM Sans",fontSize:12,color:"#334155",marginBottom:16}}>🎨 Solo creators & artists — Pro free for 3 months, no credit card needed</div>
+        <div style={{textAlign:"center",fontFamily:"DM Sans",fontSize:12,color:"#334155",marginBottom:16}}>🔒 Secure payment powered by Stripe · Cancel anytime</div>
         <div style={{textAlign:"center"}}><button onClick={onClose} style={btn("rgba(255,255,255,0.05)","#475569",{padding:"9px 26px"})}>Close</button></div>
       </div>
     </div>
@@ -1046,9 +1052,178 @@ const ShareModal = ({ session, roomUrl, onClose }) => {
   );
 };
 // ─────────────────────────────────────────────────────────────
-//  SETTINGS VIEW
+//  PUSH NOTIFICATIONS HOOK
 // ─────────────────────────────────────────────────────────────
-const SettingsView = ({ session, roomUrl, participants, onShowPricing }) => {
+const usePushNotifications = () => {
+  const [permission, setPermission] = useState(Notification?.permission || "default");
+
+  const requestPermission = async () => {
+    if (!("Notification" in window)) return;
+    const result = await Notification.requestPermission();
+    setPermission(result);
+    return result;
+  };
+
+  const notify = (title, body, icon="/favicon.svg") => {
+    if (permission !== "granted") return;
+    try {
+      new Notification(title, { body, icon });
+    } catch(e) {}
+  };
+
+  return { permission, requestPermission, notify };
+};
+
+// ─────────────────────────────────────────────────────────────
+//  EMAIL RECAP COMPONENT
+// ─────────────────────────────────────────────────────────────
+const EmailRecap = ({ notes, aiSummary, roomCode }) => {
+  const [emails, setEmails] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  const send = async () => {
+    const list = emails.split(/[\s,;]+/).map(e=>e.trim()).filter(e=>e.includes("@"));
+    if (!list.length) { setError("Enter at least one valid email address"); return; }
+    setSending(true); setError("");
+    try {
+      await sendRetroRecap({
+        to: list,
+        roomCode,
+        notes,
+        actions: aiSummary?.actions || notes.action_items?.map(n=>n.text) || [],
+        summary: aiSummary?.summary || ""
+      });
+      setSent(true);
+    } catch(e) {
+      setError("Could not send — check your Resend API key is set in Vercel");
+    } finally { setSending(false); }
+  };
+
+  if (sent) return(
+    <div style={{background:"rgba(6,214,160,0.08)",border:"1px solid rgba(6,214,160,0.2)",borderRadius:14,padding:16,marginBottom:16,textAlign:"center"}}>
+      <div style={{fontSize:24,marginBottom:6}}>📧</div>
+      <div style={{fontFamily:"Syne",fontSize:14,fontWeight:700,color:"#06d6a0"}}>Recap sent!</div>
+      <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569",marginTop:4}}>Everyone received the retro summary</div>
+    </div>
+  );
+
+  return(
+    <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:16,marginBottom:16}}>
+      <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:10}}>📧 SEND RECAP TO TEAM</div>
+      <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569",marginBottom:10}}>Enter email addresses separated by commas</div>
+      <textarea value={emails} onChange={e=>setEmails(e.target.value)}
+        placeholder="alex@company.com, jordan@company.com, riley@company.com"
+        rows={3} style={{...inp(),resize:"none",marginBottom:8,fontSize:12}}/>
+      {error&&<div style={{fontFamily:"DM Sans",fontSize:12,color:"#ff4d6d",marginBottom:8}}>{error}</div>}
+      <button onClick={send} disabled={sending}
+        style={btn("#7c3aed","white",{width:"100%",padding:"11px",opacity:sending?0.6:1})}>
+        {sending?"Sending…":"📧 Send Recap to Everyone"}
+      </button>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+//  STRIPE PAYMENT MODAL
+// ─────────────────────────────────────────────────────────────
+const StripeModal = ({ onClose }) => {
+  const [selected, setSelected] = useState(null);
+  const [step, setStep] = useState("plans"); // plans | checkout | success
+
+  // Payment links — set these in your Stripe dashboard and add to env vars
+  const PAYMENT_LINKS = {
+    pro:       import.meta.env.VITE_STRIPE_LINK_PRO       || "https://buy.stripe.com/test_pro",
+    team:      import.meta.env.VITE_STRIPE_LINK_TEAM      || "https://buy.stripe.com/test_team",
+    corporate: import.meta.env.VITE_STRIPE_LINK_CORPORATE || "https://buy.stripe.com/test_corp",
+  };
+
+  const plans = [
+    { id:"pro",       name:"Pro",       price:"$7",  period:"/mo", color:"#7c3aed", hl:true,
+      desc:"Freelancers & small teams (≤5)",
+      features:["Unlimited projects","AI estimates unlimited","Notion/Jira export","Slack integration"] },
+    { id:"team",      name:"Team",      price:"$19", period:"/mo", color:"#ffd166",
+      desc:"Growing teams up to 20",
+      features:["Everything in Pro","20 members","Analytics","Priority support"] },
+    { id:"corporate", name:"Corporate", price:"$49", period:"/mo", color:"#ff4d6d",
+      desc:"Enterprise & agencies",
+      features:["Unlimited members","SSO / SAML","Custom branding","SLA guarantee"] },
+  ];
+
+  const handleUpgrade = (plan) => {
+    const link = PAYMENT_LINKS[plan.id];
+    // Open Stripe checkout in a new tab
+    window.open(link, "_blank");
+    setSelected(plan);
+    setStep("checkout");
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.94)",zIndex:300,overflowY:"auto",padding:16}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{maxWidth:700,margin:"0 auto",paddingTop:16}}>
+
+        {step==="plans"&&(<>
+          <div style={{textAlign:"center",marginBottom:24}}>
+            <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:2,marginBottom:7}}>UPGRADE PLAN</div>
+            <div style={{fontFamily:"Syne",fontSize:26,fontWeight:800,color:"white",marginBottom:7}}>Choose your plan</div>
+            <div style={{fontFamily:"DM Sans",color:"#475569",fontSize:13}}>Unlock the full power of SprintVibe</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:12,marginBottom:20}}>
+            {plans.map(p=>(
+              <div key={p.id} style={{background:p.hl?"rgba(124,58,237,0.12)":"rgba(255,255,255,0.03)",border:`1.5px solid ${p.hl?"#7c3aed":"rgba(255,255,255,0.07)"}`,borderRadius:20,padding:20,boxShadow:p.hl?"0 0 40px rgba(124,58,237,0.12)":"none"}}>
+                {p.hl&&<div style={{fontFamily:"Syne",fontSize:9,color:"#7c3aed",letterSpacing:2,marginBottom:7}}>★ MOST POPULAR</div>}
+                <div style={{fontFamily:"Syne",fontSize:16,fontWeight:800,color:p.color,marginBottom:2}}>{p.name}</div>
+                <div style={{fontFamily:"Syne",fontSize:28,fontWeight:800,color:"white"}}>{p.price}<span style={{fontSize:12,color:"#475569",fontWeight:400}}>{p.period}</span></div>
+                <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",margin:"7px 0 12px",lineHeight:1.4}}>{p.desc}</div>
+                {p.features.map(f=><div key={f} style={{fontFamily:"DM Sans",fontSize:11,color:"#94a3b8",marginBottom:5,display:"flex",gap:6}}><span style={{color:p.color}}>✓</span>{f}</div>)}
+                <button onClick={()=>handleUpgrade(p)}
+                  style={btn(p.hl?"#7c3aed":"rgba(255,255,255,0.06)",p.hl?"white":"#94a3b8",{width:"100%",padding:"10px",marginTop:14,fontSize:13})}>
+                  Upgrade to {p.name} →
+                </button>
+              </div>
+            ))}
+          </div>
+          <div style={{textAlign:"center",fontFamily:"DM Sans",fontSize:12,color:"#334155",marginBottom:16}}>
+            🔒 Secure payment powered by Stripe · Cancel anytime
+          </div>
+          <div style={{textAlign:"center"}}>
+            <button onClick={onClose} style={btn("rgba(255,255,255,0.05)","#475569",{padding:"9px 26px"})}>Maybe later</button>
+          </div>
+        </>)}
+
+        {step==="checkout"&&(<>
+          <div style={{textAlign:"center",padding:"48px 20px"}}>
+            <div style={{fontSize:40,marginBottom:16}}>🔗</div>
+            <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:8}}>Stripe checkout opened</div>
+            <div style={{fontFamily:"DM Sans",fontSize:14,color:"#64748b",lineHeight:1.6,marginBottom:24}}>
+              Complete your payment in the new tab.<br/>
+              Come back here when you're done.
+            </div>
+            <button onClick={()=>setStep("success")}
+              style={btn("#06d6a0","#0d0d1c",{padding:"13px 32px",fontSize:14,marginBottom:12})}>
+              ✓ I've completed payment
+            </button>
+            <br/>
+            <button onClick={()=>setStep("plans")} style={btn("rgba(255,255,255,0.05)","#475569",{padding:"9px 20px",fontSize:12})}>← Back to plans</button>
+          </div>
+        </>)}
+
+        {step==="success"&&(<>
+          <div style={{textAlign:"center",padding:"48px 20px"}}>
+            <div style={{fontSize:40,marginBottom:16}}>🎉</div>
+            <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:8}}>Welcome to {selected?.name}!</div>
+            <div style={{fontFamily:"DM Sans",fontSize:14,color:"#64748b",lineHeight:1.6,marginBottom:24}}>
+              Your plan has been upgraded. Enjoy the full power of SprintVibe.
+            </div>
+            <button onClick={onClose} style={btn("#7c3aed","white",{padding:"13px 32px",fontSize:14})}>Start using {selected?.name} →</button>
+          </div>
+        </>)}
+      </div>
+    </div>
+  );
+};
+const SettingsView = ({ session, roomUrl, participants, onShowPricing, pushPermission, onEnableNotifications }) => {
   const [copied, setCopied] = useState(false);
   const copy = (text) => { navigator.clipboard?.writeText(text).catch(()=>{}); setCopied(true); setTimeout(()=>setCopied(false),2000); };
   const ROLE_COLOR = { host:"#7c3aed", participant:"#06d6a0" };
@@ -1102,6 +1277,32 @@ const SettingsView = ({ session, roomUrl, participants, onShowPricing }) => {
         </div>
       </div>
 
+      {/* ── Push Notifications ── */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
+        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>NOTIFICATIONS</div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:40,height:40,borderRadius:12,background:pushPermission==="granted"?"rgba(6,214,160,0.15)":"rgba(255,255,255,0.05)",border:`1px solid ${pushPermission==="granted"?"rgba(6,214,160,0.3)":"rgba(255,255,255,0.1)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
+            {pushPermission==="granted"?"🔔":"🔕"}
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"white",marginBottom:2}}>
+              {pushPermission==="granted"?"Notifications enabled":"Notifications disabled"}
+            </div>
+            <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569"}}>
+              {pushPermission==="granted"
+                ? "You'll be alerted when sessions start or teammates join"
+                : "Enable to get alerts when sessions start or teammates join"}
+            </div>
+          </div>
+          {pushPermission!=="granted"&&(
+            <button onClick={onEnableNotifications}
+              style={btn("#7c3aed","white",{padding:"7px 14px",fontSize:12,flexShrink:0})}>
+              Enable
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* ── Subscription ── */}
       <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18}}>
         <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>SUBSCRIPTION</div>
@@ -1122,13 +1323,14 @@ export default function SprintVibe() {
   const [session, setSession]   = useState(null);
   const [stories, setStories]   = useState({ backlog:[], sprint:[], in_progress:[], done:[] });
   const [tab, setTab]           = useState("board");
-  const [modal, setModal]       = useState(null);
+  const [modal, setModal]       = useState(null); // 'pricing' | 'share' | 'stripe'
   const [toast, setToast]       = useState(null);
   const [participants, setParticipants] = useState([]);
+  const { permission, requestPermission, notify } = usePushNotifications();
 
   // Real URL — uses your actual Vercel domain so QR codes work on iPhone/Android
   const roomUrl = session
-    ? `https://sprintvibe.io?join=${session.room?.code}`
+    ? `https://sprint-vibe.vercel.app?join=${session.room?.code}`
     : "";
 
   // Handle deep-link join via ?join=CODE in URL
@@ -1144,6 +1346,8 @@ export default function SprintVibe() {
   const handleEnter = (sess) => {
     setSession(sess);
     setTab("board");
+    // Request push notification permission when joining a room
+    requestPermission();
   };
 
   const handleLeave = async () => {
@@ -1202,13 +1406,34 @@ export default function SprintVibe() {
     const ch = supabase.channel(`notify:${session.room.id}`)
       .on('broadcast', { event:'session_started' }, ({ payload }) => {
         if (payload?.userId !== session.userId) {
-          setToast(`🎯 ${payload?.host} started ${payload?.activity}!`);
+          const msg = `🎯 ${payload?.host} started ${payload?.activity}!`;
+          setToast(msg);
           setTimeout(() => setToast(null), 4000);
+          // Browser push notification — works even when tab is in background
+          notify("SprintVibe", `${payload?.host} started ${payload?.activity}!`);
         }
       })
       .subscribe();
     return () => supabase.removeChannel(ch);
-  }, [session?.room?.id]);
+  }, [session?.room?.id, notify]);
+
+  // ── Notify when someone joins the room ───────────────────
+  useEffect(() => {
+    if (!session?.room?.id) return;
+    const ch = supabase.channel(`join-notify:${session.room.id}`)
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'participants', filter:`room_id=eq.${session.room.id}` },
+        payload => {
+          const name = payload.new?.display_name;
+          if (name && payload.new?.user_id !== session.userId) {
+            const msg = `👋 ${name} joined the room!`;
+            setToast(msg);
+            setTimeout(() => setToast(null), 3500);
+            notify("SprintVibe", `${name} joined your room!`);
+          }
+        })
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, [session?.room?.id, notify]);
 
   // Live participants — loads on join, updates in real time
   useEffect(() => {
@@ -1247,7 +1472,7 @@ export default function SprintVibe() {
           <button onClick={()=>setModal("pricing")} style={btn("rgba(255,255,255,0.04)","#64748b",{fontSize:12,border:"1px solid rgba(255,255,255,0.06)"})}>💎 View Pricing</button>
         </div>
       </div>
-      {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)}/>}
+      {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/> }
     </>
   );
 
@@ -1353,11 +1578,12 @@ export default function SprintVibe() {
         {tab==="poker"     &&<PokerSession  stories={stories} session={session} roomUrl={roomUrl}/>}
         {tab==="retro"     &&<RetroView     session={session} roomUrl={roomUrl}/>}
         {tab==="analytics" &&<AnalyticsView stories={stories} session={session}/>}
-        {tab==="settings"  &&<SettingsView  session={session} roomUrl={roomUrl} participants={participants} onShowPricing={()=>setModal("pricing")}/>}
+        {tab==="settings"  &&<SettingsView  session={session} roomUrl={roomUrl} participants={participants} onShowPricing={()=>setModal("stripe")} pushPermission={permission} onEnableNotifications={requestPermission}/>}
 
         {/* Modals */}
-        {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)}/>}
+        {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/> }
         {modal==="share"  &&<ShareModal session={session} roomUrl={roomUrl} onClose={()=>setModal(null)}/>}
+        {modal==="stripe" &&<StripeModal onClose={()=>setModal(null)}/>}
       </div>
     </>
   );
