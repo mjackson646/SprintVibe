@@ -1230,11 +1230,11 @@ export default function SprintVibe() {
 
         {/* Content */}
         {tab==="board"&&(
-          <div style={{padding:"16px 16px 48px",overflowX:"auto",display:"flex",flexDirection:"column",alignItems:"center"}}>
+          <div style={{padding:"16px 16px 48px",overflowX:"auto"}}>
 
             {/* Who's in the room — always visible on board */}
             {participants.length>0&&(
-              <div style={{marginBottom:16,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",width:"100%",maxWidth:1060}}>
+              <div style={{marginBottom:16,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",margin:"0 auto 16px",width:"fit-content",minWidth:"min(100%,820px)"}}>
                 <span style={{fontFamily:"Syne",fontSize:10,color:"#475569",letterSpacing:1,flexShrink:0}}>IN ROOM</span>
                 {participants.map(p=>(
                   <div key={p.id} style={{display:"flex",alignItems:"center",gap:7,background:"rgba(255,255,255,0.04)",borderRadius:9,padding:"5px 10px"}}>
@@ -1256,7 +1256,7 @@ export default function SprintVibe() {
                 <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569",lineHeight:1.6,marginBottom:20}}>Add your first story to get started. Click "+ Add Story" in any column below.</div>
               </div>
             )}
-            <div style={{display:"flex",gap:12,minWidth:820,justifyContent:"center"}}>
+            <div style={{display:"flex",gap:12,minWidth:820,margin:"0 auto",width:"fit-content"}}>
               {COLUMNS.map(col=><DropColumn key={col.id} id={col.id} title={col.title} color={col.color} stories={stories[col.id]||[]} onDrop={drop} onAdd={addStory}/>)}
             </div>
           </div>
