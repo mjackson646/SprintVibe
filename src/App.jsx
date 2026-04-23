@@ -1619,15 +1619,13 @@ const StripeModal = ({ onClose }) => {
     </div>
   );
 };
-const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifications, onDisableNotifications, onSignOut }) => {
+const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifications, onDisableNotifications, notificationsEnabled, onToggleNotifications, onSignOut, onUpdateSession }) => {
   const [activeTab, setActiveTab] = useState("account");
   const [displayName, setDisplayName] = useState(session?.displayName || "");
-  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
-  const [notifEnabled, setNotifEnabled] = useState(pushPermission === "granted");
 
   const isGuest = session?.userId?.startsWith("guest_");
 
@@ -1635,10 +1633,20 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
     if (!displayName.trim()) return;
     setSaving(true);
     try {
+      // Update in Supabase auth if logged in
       if (session?.user) {
         await supabase.auth.updateUser({ data: { display_name: displayName.trim() } });
       }
-      setSaveMsg("✓ Name updated!");
+      // Update participant name in room
+      if (session?.room?.id && session?.userId) {
+        await supabase.from("participants")
+          .update({ display_name: displayName.trim() })
+          .eq("room_id", session.room.id)
+          .eq("user_id", session.userId);
+      }
+      // Update session state everywhere in the app
+      onUpdateSession({ ...session, displayName: displayName.trim() });
+      setSaveMsg("✓ Name updated everywhere!");
       setTimeout(() => setSaveMsg(""), 3000);
     } catch(e) { setSaveMsg("Failed to update name"); }
     finally { setSaving(false); }
@@ -1729,18 +1737,18 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
               <div style={{fontSize:24}}>{pushPermission==="granted"?"🔔":"🔕"}</div>
               <div style={{flex:1}}>
                 <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"white",marginBottom:3}}>
-                  {pushPermission==="granted"?"Notifications On":"Notifications Off"}
+                  {notificationsEnabled?"Notifications On":"Notifications Off"}
                 </div>
                 <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569"}}>
-                  {pushPermission==="granted"
+                  {notificationsEnabled
                     ?"You'll be alerted when sessions start or teammates join"
                     :"Enable to get browser alerts for session activity"}
                 </div>
               </div>
-              {/* Toggle switch */}
-              <div onClick={pushPermission==="granted"?onDisableNotifications:onEnableNotifications}
-                style={{width:48,height:26,borderRadius:13,background:pushPermission==="granted"?"#7c3aed":"rgba(255,255,255,0.1)",cursor:"pointer",position:"relative",transition:"all 0.25s",flexShrink:0}}>
-                <div style={{width:20,height:20,borderRadius:"50%",background:"white",position:"absolute",top:3,left:pushPermission==="granted"?25:3,transition:"left 0.25s",boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}/>
+              {/* Toggle switch — moves and works */}
+              <div onClick={onToggleNotifications}
+                style={{width:48,height:26,borderRadius:13,background:notificationsEnabled?"#7c3aed":"rgba(255,255,255,0.1)",cursor:"pointer",position:"relative",transition:"background 0.25s",flexShrink:0}}>
+                <div style={{width:20,height:20,borderRadius:"50%",background:"white",position:"absolute",top:3,left:notificationsEnabled?25:3,transition:"left 0.25s",boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}/>
               </div>
             </div>
 
@@ -1755,7 +1763,7 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
                   <div style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0"}}>{n.label}</div>
                   <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569"}}>{n.desc}</div>
                 </div>
-                <div style={{width:8,height:8,borderRadius:"50%",background:pushPermission==="granted"?"#06d6a0":"#334155",boxShadow:pushPermission==="granted"?"0 0 6px #06d6a0":"none"}}/>
+                <div style={{width:8,height:8,borderRadius:"50%",background:notificationsEnabled?"#06d6a0":"#334155",boxShadow:notificationsEnabled?"0 0 6px #06d6a0":"none"}}/>
               </div>
             ))}
 
@@ -1807,6 +1815,29 @@ export default function SprintVibe() {
   const [workspace, setWorkspace] = useState(null);
   const [screen, setScreen]     = useState("landing");
   const { permission, requestPermission, notify } = usePushNotifications();
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+
+  // Smart notify — respects the toggle
+  const smartNotify = (title, body) => {
+    if (notificationsEnabled) notify(title, body);
+  };
+
+  const handleToggleNotifications = async () => {
+    if (!notificationsEnabled) {
+      // Turning on — request permission if needed
+      const result = await requestPermission();
+      if (result === "granted") setNotificationsEnabled(true);
+    } else {
+      // Turning off — just disable in-app
+      setNotificationsEnabled(false);
+    }
+  };
+
+  // Update session everywhere (name changes, etc.)
+  const handleUpdateSession = (updatedSession) => {
+    setSession(updatedSession);
+    try { localStorage.setItem("sprintvibe_session", JSON.stringify(updatedSession)); } catch(e) {}
+  };
 
   // ── Session persistence — restore on refresh ─────────────
   useEffect(() => {
@@ -1911,7 +1942,7 @@ export default function SprintVibe() {
           setToast(msg);
           setTimeout(() => setToast(null), 4000);
           // Browser push notification — works even when tab is in background
-          notify("SprintVibe", `${payload?.host} started ${payload?.activity}!`);
+          smartNotify("SprintVibe", `${payload?.host} started ${payload?.activity}!`);
         }
       })
       .subscribe();
@@ -1929,7 +1960,7 @@ export default function SprintVibe() {
             const msg = `👋 ${name} joined the room!`;
             setToast(msg);
             setTimeout(() => setToast(null), 3500);
-            notify("SprintVibe", `${name} joined your room!`);
+            smartNotify("SprintVibe", `${name} joined your room!`);
           }
         })
       .subscribe();
@@ -2112,9 +2143,12 @@ export default function SprintVibe() {
           session={session}
           onShowPricing={()=>setModal("stripe")}
           pushPermission={permission}
+          notificationsEnabled={notificationsEnabled}
+          onToggleNotifications={handleToggleNotifications}
           onEnableNotifications={requestPermission}
-          onDisableNotifications={()=>{}}
+          onDisableNotifications={()=>setNotificationsEnabled(false)}
           onSignOut={handleLeave}
+          onUpdateSession={handleUpdateSession}
         />}
 
         {/* Modals */}
