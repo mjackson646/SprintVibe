@@ -155,33 +155,6 @@ const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
 
 
 
-  // Load teams — from localStorage (works for everyone) + Supabase (authenticated)
-  useEffect(() => {
-    const loadTeams = async () => {
-      // Always load from localStorage first — instant
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) setTeams(JSON.parse(saved));
-      } catch(e) {}
-
-      // Also try Supabase for authenticated users
-      if (session?.user && userId && !userId.startsWith("guest_")) {
-        try {
-          const { data } = await supabase.from("workspaces").select("*").eq("owner_id", userId).order("created_at", {ascending:false});
-          if (data?.length > 0) {
-            const merged = data.map(ws => ({
-              id: ws.id, name: ws.name, roomCode: ws.room_code,
-              roomId: ws.room_id, createdAt: ws.created_at
-            }));
-            setTeams(merged);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-          }
-        } catch(e) {}
-      }
-    };
-    loadTeams();
-  }, [userId]);
-
 const ResetPasswordPage = ({ onDone }) => {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm]   = useState("");
