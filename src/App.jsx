@@ -1633,19 +1633,22 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
     if (!displayName.trim()) return;
     setSaving(true);
     try {
+      const newName = displayName.trim();
+      const newAvatar = newName.split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
+
       // Update in Supabase auth if logged in
       if (session?.user) {
-        await supabase.auth.updateUser({ data: { display_name: displayName.trim() } });
+        await supabase.auth.updateUser({ data: { display_name: newName } });
       }
-      // Update participant name in room
+      // Update participant row — name AND avatar so In Room bar updates for EVERYONE
       if (session?.room?.id && session?.userId) {
         await supabase.from("participants")
-          .update({ display_name: displayName.trim() })
+          .update({ display_name: newName, avatar: newAvatar })
           .eq("room_id", session.room.id)
           .eq("user_id", session.userId);
       }
-      // Update session state everywhere in the app
-      onUpdateSession({ ...session, displayName: displayName.trim() });
+      // Update local session so header + all app appearances change instantly
+      onUpdateSession({ ...session, displayName: newName });
       setSaveMsg("✓ Name updated everywhere!");
       setTimeout(() => setSaveMsg(""), 3000);
     } catch(e) { setSaveMsg("Failed to update name"); }
@@ -1823,13 +1826,16 @@ export default function SprintVibe() {
   };
 
   const handleToggleNotifications = async () => {
-    if (!notificationsEnabled) {
-      // Turning on — request permission if needed
-      const result = await requestPermission();
-      if (result === "granted") setNotificationsEnabled(true);
-    } else {
-      // Turning off — just disable in-app
+    if (notificationsEnabled) {
+      // Simply turn off — always works
       setNotificationsEnabled(false);
+    } else {
+      // Turning on — request permission if not yet granted
+      if (permission !== "granted") {
+        const result = await requestPermission();
+        if (result !== "granted") return; // browser blocked it
+      }
+      setNotificationsEnabled(true);
     }
   };
 
