@@ -1158,7 +1158,7 @@ const PokerSession = ({ stories, session, roomUrl }) => {
           <div style={{fontFamily:"DM Sans",fontSize:12,color:"#64748b",textAlign:"center",marginBottom:10}}>Accept a point value:</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginBottom:22}}>
             {POKER_VALUES.filter(v=>!isNaN(parseFloat(v))).map(v=>(
-              <button key={v} onClick={()=>setStep("pick")}
+              <button key={v} onClick={async()=>{ await scoreStory(ticket.id, parseFloat(v)).catch(console.error); setStep("pick"); }}
                 style={{width:52,height:52,borderRadius:12,cursor:"pointer",border:`2px solid ${v===String(suggested)?"#06d6a0":"rgba(255,255,255,0.1)"}`,background:v===String(suggested)?"rgba(6,214,160,0.15)":"rgba(255,255,255,0.04)",color:v===String(suggested)?"#06d6a0":"white",fontFamily:"Syne",fontWeight:800,fontSize:15,transition:"all 0.18s"}}>
                 {v}
               </button>
@@ -1903,7 +1903,7 @@ const StripeModal = ({ onClose }) => {
             <div style={{fontFamily:"DM Sans",fontSize:14,color:"#64748b",lineHeight:1.6,marginBottom:24}}>
               You now have full access to all {selected?.name} features.
             </div>
-            <button onClick={()=>{ onUpgradePlan&&onUpgradePlan(selected?.id||"pro"); onClose(); }}
+            <button onClick={onClose}
               style={btn("#7c3aed","white",{padding:"13px 32px",fontSize:14})}>Start using {selected?.name} →</button>
           </div>
         </>)}
@@ -1954,7 +1954,7 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
     try {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
-      setNewPassword(""); setConfirmPassword(""); setCurrentPassword("");
+      setNewPassword(""); setConfirmPassword("");
       setSaveMsg("✓ Password updated!");
       setTimeout(() => setSaveMsg(""), 3000);
     } catch(e) { setSaveMsg(e.message || "Failed to update password"); }
@@ -2190,11 +2190,12 @@ export default function SprintVibe() {
 
   const handleLeave = async () => {
     if (session?.room?.id) await leaveRoom(session.room.id, session.userId).catch(()=>{});
-    setSession(null);
+    // Preserve user identity so the room selector can load workspaces
+    setSession(prev => prev ? { ...prev, room: null } : null);
     setStories({ backlog:[], sprint:[], in_progress:[], done:[] });
     setParticipants([]);
     try { localStorage.removeItem("sprintvibe_session"); } catch(e) {}
-    setScreen("roomselector"); // Go to room selector, not landing
+    setScreen("roomselector");
   };
 
   const handleSignOut = async () => {

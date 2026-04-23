@@ -82,7 +82,9 @@ export const revealPokerVotes = async (roomId, ticketId) => {
 }
 
 export const getPokerVotes = async (roomId, ticketId) => {
-  const { data, error } = await supabase.from('poker_votes').select('*').eq('room_id', roomId).eq('ticket_id', ticketId)
+  let query = supabase.from('poker_votes').select('*').eq('room_id', roomId)
+  if (ticketId != null) query = query.eq('ticket_id', ticketId)
+  const { data, error } = await query
   if (error) throw error
   return data
 }
