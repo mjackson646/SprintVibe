@@ -169,9 +169,12 @@ const QRJoinBanner = ({ roomCode, url, participants=[] }) => {
 //  ONBOARDING SCREEN — shown before anything else
 // ─────────────────────────────────────────────────────────────
 const Onboarding = ({ onEnter }) => {
-  const [mode, setMode] = useState("welcome"); // welcome | create | join | login
+  // Read ?join=CODE from URL immediately
+  const urlCode = new URLSearchParams(window.location.search).get("join") || "";
+
+  const [mode, setMode] = useState(urlCode ? "join" : "welcome");
   const [name, setName] = useState("");
-  const [roomCode, setRoomCode] = useState("");
+  const [roomCode, setRoomCode] = useState(urlCode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -249,20 +252,37 @@ const Onboarding = ({ onEnter }) => {
 
   if (mode==="create"||mode==="join") return(
     <div style={S}>
-      <button onClick={()=>setMode("welcome")} style={btn("rgba(255,255,255,0.06)","#64748b",{marginBottom:24})}>← Back</button>
-      <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:6}}>
-        {mode==="create"?"Create a Room":"Join a Room"}
-      </div>
-      <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b",marginBottom:24}}>
-        {mode==="create"?"You'll be the host — share the room code with your team":"Enter the room code your host shared with you"}
-      </div>
+      {!urlCode && <button onClick={()=>setMode("welcome")} style={btn("rgba(255,255,255,0.06)","#64748b",{marginBottom:24})}>← Back</button>}
+
+      {/* Special header when joining via QR */}
+      {mode==="join" && urlCode ? (
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <div style={{fontSize:40,marginBottom:10}}>👋</div>
+          <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:6}}>You're invited!</div>
+          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b",marginBottom:12}}>Enter your name to join the room</div>
+          <div style={{background:"rgba(124,58,237,0.12)",border:"1px solid rgba(124,58,237,0.3)",borderRadius:12,padding:"10px 16px",display:"inline-block"}}>
+            <div style={{fontFamily:"DM Sans",fontSize:10,color:"#64748b",marginBottom:2}}>ROOM CODE</div>
+            <div style={{fontFamily:"Syne",fontSize:20,fontWeight:800,color:"#a78bfa",letterSpacing:3}}>{roomCode}</div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:6}}>
+            {mode==="create"?"Create a Room":"Join a Room"}
+          </div>
+          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b",marginBottom:24}}>
+            {mode==="create"?"You'll be the host — share the room code with your team":"Enter the room code your host shared with you"}
+          </div>
+        </>
+      )}
 
       <div style={{marginBottom:14}}>
         <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:6}}>Your name</div>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Alex" style={inp()} autoFocus/>
       </div>
 
-      {mode==="join"&&(
+      {/* Only show room code input if NOT coming from QR */}
+      {mode==="join" && !urlCode && (
         <div style={{marginBottom:14}}>
           <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:6}}>Room code</div>
           <input value={roomCode} onChange={e=>setRoomCode(e.target.value.toUpperCase())} placeholder="e.g. BOARD-7X9P" style={inp({fontFamily:"Syne",letterSpacing:2,fontSize:15})}/>
@@ -273,7 +293,7 @@ const Onboarding = ({ onEnter }) => {
 
       <button onClick={()=>handleGuest(mode)} disabled={loading}
         style={btn("#7c3aed","white",{width:"100%",padding:"14px",fontSize:14,opacity:loading?0.6:1})}>
-        {loading?"Loading…":mode==="create"?"Create Room & Enter →":"Join Room →"}
+        {loading?"Joining…":mode==="create"?"Create Room & Enter →":"Join Room →"}
       </button>
     </div>
   );
