@@ -618,9 +618,18 @@ const RetroView = ({ session, roomUrl }) => {
     return () => supabase.removeChannel(ch);
   }, [room]);
 
-  // Subscribe to phase changes from host
+  // Subscribe to phase changes from host + load current phase immediately on mount
   useEffect(() => {
     if (!room) return;
+
+    // Load current phase RIGHT NOW — so participants joining mid-session see correct phase
+    const loadPhase = async () => {
+      const { data } = await supabase.from("rooms").select("phase").eq("id", room.id).single();
+      if (data?.phase) setPhaseLocal(data.phase);
+    };
+    loadPhase();
+
+    // Then keep listening for future changes
     const ch = supabase.channel(`room-phase:${room.id}`)
       .on("postgres_changes", { event:"UPDATE", schema:"public", table:"rooms", filter:`id=eq.${room.id}` },
         payload => { if(payload.new.phase) setPhaseLocal(payload.new.phase); })
