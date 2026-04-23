@@ -27,17 +27,133 @@ const FontLoader = () => {
 //  TEAM SELECTOR — simplified: 1 workspace = 1 team = all tools
 // ─────────────────────────────────────────────────────────────
 const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
-  const [teams, setTeams]       = useState([]);
-  const [creating, setCreating] = useState(false);
-  const [teamName, setTeamName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState("");
+  const [teams, setTeams]     = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState("");
 
   const userId      = session?.userId || "";
   const displayName = session?.displayName || "You";
   const color       = session?.color || "#7c3aed";
   const STORAGE_KEY = `sv_teams_${userId}`;
+
+  useEffect(() => {
+    const loadTeams = async () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) setTeams(JSON.parse(saved));
+      } catch(e) {}
+      if (session?.user && userId && !userId.startsWith("guest_")) {
+        try {
+          const { data } = await supabase.from("workspaces").select("*").eq("owner_id", userId).order("created_at", {ascending:false});
+          if (data?.length > 0) {
+            const merged = data.map(ws => ({ id: ws.id, name: ws.name, roomCode: ws.room_code, roomId: ws.room_id, createdAt: ws.created_at }));
+            setTeams(merged);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          }
+        } catch(e) {}
+      }
+    };
+    loadTeams();
+  }, [userId]);
+
+  const enterTeam = async (team) => {
+    setLoading(true); setError("");
+    try {
+      const { data: room, error: rErr } = await supabase.from("rooms").select("*").eq("id", team.roomId).single();
+      if (rErr || !room) throw new Error("Room not found");
+      await supabase.from("participants").upsert({
+        room_id: room.id, user_id: userId, display_name: displayName,
+        avatar: displayName.slice(0,2).toUpperCase(), color, role:"host", online:true
+      }, { onConflict:"room_id,user_id" });
+      onEnterRoom({ userId, displayName, color, room, role:"host", user: session?.user });
+    } catch(e) { setError("Could not enter workspace — try refreshing"); }
+    finally { setLoading(false); }
+  };
+
+  const deleteTeam = (team) => {
+    if (!window.confirm(`Delete "${team.name}"? This cannot be undone.`)) return;
+    const updated = teams.filter(t => t.id !== team.id);
+    setTeams(updated);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updated)); } catch(e) {}
+    supabase.from("workspaces").delete().eq("id", team.id).catch(()=>{});
+  };
+
+  const COLORS_LIST = ["#7c3aed","#06d6a0","#ffd166","#ff4d6d","#38bdf8","#fb7185","#a3e635","#f97316"];
+
+  return(
+    <div style={{minHeight:"100vh",background:"#08080f",display:"flex",flexDirection:"column"}}>
+      {/* Header */}
+      <div style={{padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.06)",display:"flex",alignItems:"center",gap:12,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(16px)"}}>
+        <button onClick={onGoHome} style={{fontFamily:"Syne",fontWeight:800,fontSize:18,color:"white",background:"none",border:"none",cursor:"pointer",letterSpacing:-0.5,padding:0}}>
+          Sprint<span style={{color:"#7c3aed"}}>Vibe</span>
+        </button>
+        <div style={{flex:1}}/>
+        <div style={{display:"flex",alignItems:"center",gap:7,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:"5px 10px"}}>
+          <div style={{width:22,height:22,borderRadius:"50%",background:color,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:9,color:"white"}}>
+            {displayName.slice(0,2).toUpperCase()}
+          </div>
+          <span style={{fontFamily:"DM Sans",fontSize:12,color:"#e2e8f0"}}>{displayName}</span>
+        </div>
+        <button onClick={onSignOut} style={btn("rgba(255,77,109,0.15)","#ff4d6d",{padding:"6px 12px",fontSize:11})}>Sign Out</button>
+      </div>
+
+      {/* Content */}
+      <div style={{flex:1,overflowY:"auto",padding:"32px 20px 60px",maxWidth:700,margin:"0 auto",width:"100%"}}>
+        <div style={{marginBottom:28}}>
+          <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:6}}>Switch Workspace</div>
+          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>Choose a team to enter. Each workspace has Board, Poker and Retro built in.</div>
+        </div>
+
+        {error&&<div style={{fontFamily:"DM Sans",fontSize:12,color:"#ff4d6d",marginBottom:14}}>{error}</div>}
+
+        {teams.length===0 ? (
+          <div style={{background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.07)",borderRadius:16,padding:"48px 20px",textAlign:"center"}}>
+            <div style={{fontSize:36,marginBottom:12}}>🏢</div>
+            <div style={{fontFamily:"Syne",fontSize:16,fontWeight:700,color:"#334155",marginBottom:6}}>No workspaces yet</div>
+            <div style={{fontFamily:"DM Sans",fontSize:13,color:"#1e293b",marginBottom:20}}>Create a workspace from the home screen to get started</div>
+            <button onClick={onGoHome} style={btn("#7c3aed","white",{padding:"11px 24px",fontSize:13})}>← Back to Home</button>
+          </div>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+            {teams.map((team,i)=>(
+              <div key={team.id}
+                style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:18,overflow:"hidden",transition:"all 0.2s"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor="#7c3aed";e.currentTarget.style.background="rgba(124,58,237,0.07)";}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.07)";e.currentTarget.style.background="rgba(255,255,255,0.03)";}}>
+                <div style={{height:4,background:COLORS_LIST[i%COLORS_LIST.length]}}/>
+                <div style={{padding:"18px 18px 14px"}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:14}}>
+                    <div style={{width:40,height:40,borderRadius:12,background:`${COLORS_LIST[i%COLORS_LIST.length]}22`,border:`1.5px solid ${COLORS_LIST[i%COLORS_LIST.length]}44`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:16,color:COLORS_LIST[i%COLORS_LIST.length],flexShrink:0}}>
+                      {team.name.slice(0,1).toUpperCase()}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontFamily:"Syne",fontSize:16,fontWeight:800,color:"white",marginBottom:2}}>{team.name}</div>
+                      <div style={{fontFamily:"DM Mono",fontSize:10,color:"#475569",letterSpacing:1}}>{team.roomCode}</div>
+                    </div>
+                    <button onClick={()=>deleteTeam(team)}
+                      style={{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:18,padding:"2px 6px",lineHeight:1,flexShrink:0}}
+                      title="Delete workspace">×</button>
+                  </div>
+                  <div style={{display:"flex",gap:6,marginBottom:14}}>
+                    {["📋 Board","🃏 Poker","🏁 Retro"].map(t=>(
+                      <span key={t} style={{fontFamily:"DM Sans",fontSize:10,color:"#475569",background:"rgba(255,255,255,0.05)",borderRadius:6,padding:"3px 8px"}}>{t}</span>
+                    ))}
+                  </div>
+                  <button onClick={()=>enterTeam(team)} disabled={loading}
+                    style={btn("#7c3aed","white",{width:"100%",padding:"10px",fontSize:13,borderRadius:10})}>
+                    {loading?"Loading…":"Enter Workspace →"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
 
   // Load teams — from localStorage (works for everyone) + Supabase (authenticated)
   useEffect(() => {
@@ -66,210 +182,6 @@ const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
     loadTeams();
   }, [userId]);
 
-  const saveTeams = (updated) => {
-    setTeams(updated);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updated)); } catch(e) {}
-  };
-
-  const createTeam = async () => {
-    if (!teamName.trim()) return;
-    setLoading(true); setError("");
-    try {
-      // Generate a unique room code for this team
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-      let code = "TEAM-";
-      for (let i=0;i<4;i++) code += chars[Math.floor(Math.random()*chars.length)];
-
-      // Create the room in Supabase
-      const { data: room, error: rErr } = await supabase.from("rooms")
-        .insert({ code, type:"board", host_id: userId, phase:"lobby", active: true })
-        .select().single();
-      if (rErr) throw rErr;
-
-      // Save workspace to Supabase (with room reference)
-      let wsId = `local_${Date.now()}`;
-      try {
-        const { data: ws } = await supabase.from("workspaces")
-          .insert({ name: teamName.trim(), owner_id: userId, plan:"free" })
-          .select().single();
-        if (ws) wsId = ws.id;
-      } catch(e) {}
-
-      // Join as host participant
-      await supabase.from("participants").upsert({
-        room_id: room.id, user_id: userId, display_name: displayName,
-        avatar: displayName.slice(0,2).toUpperCase(), color, role:"host", online:true
-      }, { onConflict:"room_id,user_id" });
-
-      // Save team locally
-      const newTeam = { id: wsId, name: teamName.trim(), roomCode: room.code, roomId: room.id, createdAt: new Date().toISOString() };
-      saveTeams([newTeam, ...teams]);
-      setTeamName(""); setCreating(false);
-
-      // Enter the team
-      onEnterRoom({ userId, displayName, color, room, role:"host", user: session?.user });
-    } catch(e) {
-      setError(`Could not create team: ${e.message||"try again"}`);
-    } finally { setLoading(false); }
-  };
-
-  const enterTeam = async (team) => {
-    setLoading(true); setError("");
-    try {
-      const { data: room, error: rErr } = await supabase.from("rooms")
-        .select("*").eq("id", team.roomId).single();
-      if (rErr || !room) throw new Error("Room not found");
-
-      await supabase.from("participants").upsert({
-        room_id: room.id, user_id: userId, display_name: displayName,
-        avatar: displayName.slice(0,2).toUpperCase(), color, role:"host", online:true
-      }, { onConflict:"room_id,user_id" });
-
-      onEnterRoom({ userId, displayName, color, room, role:"host", user: session?.user });
-    } catch(e) { setError("Could not enter team workspace"); }
-    finally { setLoading(false); }
-  };
-
-  const deleteTeam = (team) => {
-    if (!window.confirm(`Delete "${team.name}"? This cannot be undone.`)) return;
-    saveTeams(teams.filter(t => t.id !== team.id));
-    supabase.from("workspaces").delete().eq("id", team.id).catch(()=>{});
-  };
-
-  const joinByCode = async () => {
-    if (!joinCode.trim()) return;
-    setLoading(true); setError("");
-    try {
-      const { data: room, error: rErr } = await supabase.from("rooms")
-        .select("*").eq("code", joinCode.trim().toUpperCase()).eq("active", true).single();
-      if (rErr || !room) throw new Error("Room not found");
-      await supabase.from("participants").upsert({
-        room_id: room.id, user_id: userId, display_name: displayName,
-        avatar: displayName.slice(0,2).toUpperCase(), color, role:"participant", online:true
-      }, { onConflict:"room_id,user_id" });
-      onEnterRoom({ userId, displayName, color, room, role:"participant", user: session?.user });
-    } catch(e) { setError("Room not found — check the code"); }
-    finally { setLoading(false); }
-  };
-
-  const COLORS_LIST = ["#7c3aed","#06d6a0","#ffd166","#ff4d6d","#38bdf8","#fb7185","#a3e635","#f97316"];
-
-  return(
-    <div style={{minHeight:"100vh",background:"#08080f",display:"flex",flexDirection:"column"}}>
-      {/* Header */}
-      <div style={{padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.06)",display:"flex",alignItems:"center",gap:12,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(16px)"}}>
-        <button onClick={onGoHome} style={{fontFamily:"Syne",fontWeight:800,fontSize:18,color:"white",background:"none",border:"none",cursor:"pointer",letterSpacing:-0.5,padding:0}}>
-          Sprint<span style={{color:"#7c3aed"}}>Vibe</span>
-        </button>
-        <div style={{flex:1}}/>
-        <div style={{display:"flex",alignItems:"center",gap:7,background:"rgba(255,255,255,0.05)",borderRadius:10,padding:"5px 10px"}}>
-          <div style={{width:22,height:22,borderRadius:"50%",background:color,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:9,color:"white"}}>
-            {displayName.slice(0,2).toUpperCase()}
-          </div>
-          <span style={{fontFamily:"DM Sans",fontSize:12,color:"#e2e8f0"}}>{displayName}</span>
-        </div>
-        <button onClick={onSignOut} style={btn("rgba(255,77,109,0.15)","#ff4d6d",{padding:"6px 12px",fontSize:11})}>Sign Out</button>
-      </div>
-
-      {/* Content */}
-      <div style={{flex:1,overflowY:"auto",padding:"32px 20px 60px",maxWidth:700,margin:"0 auto",width:"100%"}}>
-
-        <div style={{marginBottom:28}}>
-          <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:6}}>My Teams</div>
-          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>Each team has its own Board, Poker and Retro — all your tools in one place.</div>
-        </div>
-
-        {/* Create new team */}
-        {creating ? (
-          <div style={{background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.25)",borderRadius:16,padding:20,marginBottom:20}}>
-            <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"white",marginBottom:12}}>New Team Name</div>
-            <input value={teamName} onChange={e=>setTeamName(e.target.value)} placeholder="e.g. Frontend Team, Marketing, Design..."
-              autoFocus onKeyDown={e=>e.key==="Enter"&&createTeam()}
-              style={{...inp(),marginBottom:12}}/>
-            {error&&<div style={{fontFamily:"DM Sans",fontSize:12,color:"#ff4d6d",marginBottom:10}}>{error}</div>}
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={createTeam} disabled={loading}
-                style={btn("#7c3aed","white",{flex:1,padding:"11px",fontSize:13,opacity:loading?0.6:1})}>
-                {loading?"Creating…":"🚀 Create Team"}
-              </button>
-              <button onClick={()=>{setCreating(false);setError("");}}
-                style={btn("rgba(255,255,255,0.06)","#64748b",{padding:"11px 16px"})}>Cancel</button>
-            </div>
-          </div>
-        ) : (
-          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:24}}>
-            <button onClick={()=>setCreating(true)}
-              style={btn("#7c3aed","white",{padding:"12px 20px",fontSize:13,borderRadius:12})}>
-              + New Team
-            </button>
-            <div style={{display:"flex",gap:8,alignItems:"center",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"8px 14px",flex:1,minWidth:180}}>
-              <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())}
-                placeholder="Join by room code..."
-                style={{background:"none",border:"none",color:"white",fontFamily:"Syne",fontSize:13,letterSpacing:1,outline:"none",flex:1,minWidth:0}}
-                onKeyDown={e=>e.key==="Enter"&&joinByCode()}/>
-              <button onClick={joinByCode} disabled={loading}
-                style={btn("#06d6a0","#0d0d1c",{padding:"6px 14px",fontSize:12,flexShrink:0})}>Join</button>
-            </div>
-          </div>
-        )}
-
-        {error&&!creating&&<div style={{fontFamily:"DM Sans",fontSize:12,color:"#ff4d6d",marginBottom:12}}>{error}</div>}
-
-        {/* Team cards */}
-        {teams.length===0 ? (
-          <div style={{background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.07)",borderRadius:16,padding:"48px 20px",textAlign:"center"}}>
-            <div style={{fontSize:36,marginBottom:12}}>🏢</div>
-            <div style={{fontFamily:"Syne",fontSize:16,fontWeight:700,color:"#334155",marginBottom:6}}>No teams yet</div>
-            <div style={{fontFamily:"DM Sans",fontSize:13,color:"#1e293b",marginBottom:20}}>Create your first team to get started</div>
-            <button onClick={()=>setCreating(true)} style={btn("#7c3aed","white",{padding:"11px 24px",fontSize:13})}>+ Create First Team</button>
-          </div>
-        ) : (
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-            {teams.map((team,i)=>(
-              <div key={team.id}
-                style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:18,overflow:"hidden",transition:"all 0.2s",position:"relative"}}
-                onMouseEnter={e=>{e.currentTarget.style.borderColor="#7c3aed";e.currentTarget.style.background="rgba(124,58,237,0.07)";}}
-                onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.07)";e.currentTarget.style.background="rgba(255,255,255,0.03)";}}>
-                {/* Color bar */}
-                <div style={{height:4,background:COLORS_LIST[i%COLORS_LIST.length]}}/>
-                <div style={{padding:"18px 18px 14px"}}>
-                  <div style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:14}}>
-                    <div style={{width:40,height:40,borderRadius:12,background:`${COLORS_LIST[i%COLORS_LIST.length]}22`,border:`1.5px solid ${COLORS_LIST[i%COLORS_LIST.length]}44`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:16,color:COLORS_LIST[i%COLORS_LIST.length],flexShrink:0}}>
-                      {team.name.slice(0,1).toUpperCase()}
-                    </div>
-                    <div style={{flex:1}}>
-                      <div style={{fontFamily:"Syne",fontSize:16,fontWeight:800,color:"white",marginBottom:2}}>{team.name}</div>
-                      <div style={{fontFamily:"DM Mono",fontSize:10,color:"#475569",letterSpacing:1}}>{team.roomCode}</div>
-                    </div>
-                    <button onClick={()=>deleteTeam(team)}
-                      style={{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:16,padding:"2px 4px",lineHeight:1,flexShrink:0}}
-                      title="Delete team">×</button>
-                  </div>
-
-                  {/* Tool badges */}
-                  <div style={{display:"flex",gap:6,marginBottom:14}}>
-                    {["📋 Board","🃏 Poker","🏁 Retro"].map(t=>(
-                      <span key={t} style={{fontFamily:"DM Sans",fontSize:10,color:"#475569",background:"rgba(255,255,255,0.05)",borderRadius:6,padding:"3px 8px"}}>{t}</span>
-                    ))}
-                  </div>
-
-                  <button onClick={()=>enterTeam(team)} disabled={loading}
-                    style={btn("#7c3aed","white",{width:"100%",padding:"10px",fontSize:13,borderRadius:10})}>
-                    {loading?"Loading…":"Enter Team →"}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// ─────────────────────────────────────────────────────────────
-//  RESET PASSWORD PAGE
-// ─────────────────────────────────────────────────────────────
 const ResetPasswordPage = ({ onDone }) => {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm]   = useState("");
