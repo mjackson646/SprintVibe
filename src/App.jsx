@@ -23,104 +23,125 @@ const FontLoader = () => {
 // ─────────────────────────────────────────────────────────────
 //  ROOM SELECTOR — workspace & room management hub
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+//  TEAM SELECTOR — simplified: 1 workspace = 1 team = all tools
+// ─────────────────────────────────────────────────────────────
 const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
-  const [workspaces, setWorkspaces] = useState([]);
-  const [recentRooms, setRecentRooms] = useState([]);
+  const [teams, setTeams]       = useState([]);
   const [creating, setCreating] = useState(false);
-  const [newWsName, setNewWsName] = useState("");
-  const [joiningCode, setJoiningCode] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [activeWs, setActiveWs] = useState(null);
-  const [showNewRoom, setShowNewRoom] = useState(false);
-  const userId = session?.userId || `guest_${Date.now()}`;
+  const [teamName, setTeamName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState("");
+
+  const userId      = session?.userId || "";
   const displayName = session?.displayName || "You";
-  const color = session?.color || "#7c3aed";
+  const color       = session?.color || "#7c3aed";
+  const STORAGE_KEY = `sv_teams_${userId}`;
 
-  const ROOM_TYPES = [
-    { type:"board",  icon:"📋", label:"Kanban Board",    desc:"Sprint tracking & story management" },
-    { type:"poker",  icon:"🃏", label:"Planning Poker",  desc:"Estimate stories with your team" },
-    { type:"retro",  icon:"🏁", label:"Retrospective",   desc:"Review what went well and improve" },
-  ];
-
+  // Load teams — from localStorage (works for everyone) + Supabase (authenticated)
   useEffect(() => {
-    loadData();
-  }, []);
+    const loadTeams = async () => {
+      // Always load from localStorage first — instant
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) setTeams(JSON.parse(saved));
+      } catch(e) {}
 
-  const loadData = async () => {
-    try {
-      // Load workspaces owned by or member of
-      const { data: ws } = await supabase.from("workspaces").select("*").eq("owner_id", userId).order("created_at", {ascending:false});
-      if (ws) setWorkspaces(ws);
-      if (ws?.length > 0 && !activeWs) setActiveWs(ws[0]);
+      // Also try Supabase for authenticated users
+      if (session?.user && userId && !userId.startsWith("guest_")) {
+        try {
+          const { data } = await supabase.from("workspaces").select("*").eq("owner_id", userId).order("created_at", {ascending:false});
+          if (data?.length > 0) {
+            const merged = data.map(ws => ({
+              id: ws.id, name: ws.name, roomCode: ws.room_code,
+              roomId: ws.room_id, createdAt: ws.created_at
+            }));
+            setTeams(merged);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          }
+        } catch(e) {}
+      }
+    };
+    loadTeams();
+  }, [userId]);
 
-      // Load recent rooms
-      const { data: rooms } = await supabase.from("rooms").select("*").eq("host_id", userId).eq("active", true).order("created_at", {ascending:false}).limit(10);
-      if (rooms) setRecentRooms(rooms);
-    } catch(e) { console.error(e); }
+  const saveTeams = (updated) => {
+    setTeams(updated);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updated)); } catch(e) {}
   };
 
-  const createWorkspace = async () => {
-    if (!newWsName.trim()) return;
-    setLoading(true);
+  const createTeam = async () => {
+    if (!teamName.trim()) return;
+    setLoading(true); setError("");
     try {
-      const { data: ws } = await supabase.from("workspaces").insert({ name: newWsName.trim(), owner_id: userId, plan:"free" }).select().single();
-      if (ws) { setWorkspaces(p=>[ws,...p]); setActiveWs(ws); setNewWsName(""); setCreating(false); }
-    } catch(e) { setError("Could not create workspace"); }
+      // Generate a unique room code for this team
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let code = "TEAM-";
+      for (let i=0;i<4;i++) code += chars[Math.floor(Math.random()*chars.length)];
+
+      // Create the room in Supabase
+      const { data: room, error: rErr } = await supabase.from("rooms")
+        .insert({ code, type:"board", host_id: userId, phase:"lobby", active: true })
+        .select().single();
+      if (rErr) throw rErr;
+
+      // Save workspace to Supabase (with room reference)
+      let wsId = `local_${Date.now()}`;
+      try {
+        const { data: ws } = await supabase.from("workspaces")
+          .insert({ name: teamName.trim(), owner_id: userId, plan:"free" })
+          .select().single();
+        if (ws) wsId = ws.id;
+      } catch(e) {}
+
+      // Join as host participant
+      await supabase.from("participants").upsert({
+        room_id: room.id, user_id: userId, display_name: displayName,
+        avatar: displayName.slice(0,2).toUpperCase(), color, role:"host", online:true
+      }, { onConflict:"room_id,user_id" });
+
+      // Save team locally
+      const newTeam = { id: wsId, name: teamName.trim(), roomCode: room.code, roomId: room.id, createdAt: new Date().toISOString() };
+      saveTeams([newTeam, ...teams]);
+      setTeamName(""); setCreating(false);
+
+      // Enter the team
+      onEnterRoom({ userId, displayName, color, room, role:"host", user: session?.user });
+    } catch(e) {
+      setError(`Could not create team: ${e.message||"try again"}`);
+    } finally { setLoading(false); }
+  };
+
+  const enterTeam = async (team) => {
+    setLoading(true); setError("");
+    try {
+      const { data: room, error: rErr } = await supabase.from("rooms")
+        .select("*").eq("id", team.roomId).single();
+      if (rErr || !room) throw new Error("Room not found");
+
+      await supabase.from("participants").upsert({
+        room_id: room.id, user_id: userId, display_name: displayName,
+        avatar: displayName.slice(0,2).toUpperCase(), color, role:"host", online:true
+      }, { onConflict:"room_id,user_id" });
+
+      onEnterRoom({ userId, displayName, color, room, role:"host", user: session?.user });
+    } catch(e) { setError("Could not enter team workspace"); }
     finally { setLoading(false); }
   };
 
-  const createRoom = async (type) => {
-    setLoading(true); setError("");
-    try {
-      const prefix = type==="poker"?"POKER":type==="retro"?"RETRO":"BOARD";
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-      let code = prefix + "-";
-      for (let i=0;i<4;i++) code += chars[Math.floor(Math.random()*chars.length)];
-
-      const { data: room, error: roomErr } = await supabase.from("rooms")
-        .insert({ code, type, host_id: userId, phase:"lobby", active: true })
-        .select().single();
-
-      if (roomErr) throw roomErr;
-
-      // Link room to workspace if one is active
-      if (activeWs && room) {
-        await supabase.from("workspace_rooms")
-          .insert({ workspace_id: activeWs.id, room_id: room.id }).catch(()=>{});
-      }
-
-      if (room) {
-        await supabase.from("participants").upsert({
-          room_id: room.id, user_id: userId, display_name: displayName,
-          avatar: displayName.slice(0,2).toUpperCase(), color, role:"host", online:true
-        }, { onConflict:"room_id,user_id" });
-
-        // Refresh recent rooms
-        setRecentRooms(p=>[room,...p]);
-        onEnterRoom({ userId, displayName, color, room, role:"host", user: session?.user });
-      }
-    } catch(e) {
-      console.error("createRoom error:", e);
-      setError(`Could not create room: ${e.message || "unknown error"}`);
-    }
-    finally { setLoading(false); setShowNewRoom(false); }
-  };
-
-  const deleteWorkspace = async (ws) => {
-    if (!window.confirm(`Delete workspace "${ws.name}"? This cannot be undone.`)) return;
-    try {
-      await supabase.from("workspaces").delete().eq("id", ws.id);
-      setWorkspaces(p => p.filter(w => w.id !== ws.id));
-      if (activeWs?.id === ws.id) setActiveWs(null);
-    } catch(e) { setError("Could not delete workspace"); }
+  const deleteTeam = (team) => {
+    if (!window.confirm(`Delete "${team.name}"? This cannot be undone.`)) return;
+    saveTeams(teams.filter(t => t.id !== team.id));
+    supabase.from("workspaces").delete().eq("id", team.id).catch(()=>{});
   };
 
   const joinByCode = async () => {
-    if (!joiningCode.trim()) return;
+    if (!joinCode.trim()) return;
     setLoading(true); setError("");
     try {
-      const { data: room, error: rErr } = await supabase.from("rooms").select("*").eq("code", joiningCode.trim().toUpperCase()).eq("active", true).single();
+      const { data: room, error: rErr } = await supabase.from("rooms")
+        .select("*").eq("code", joinCode.trim().toUpperCase()).eq("active", true).single();
       if (rErr || !room) throw new Error("Room not found");
       await supabase.from("participants").upsert({
         room_id: room.id, user_id: userId, display_name: displayName,
@@ -131,8 +152,7 @@ const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
     finally { setLoading(false); }
   };
 
-  const TYPE_COLOR = { board:"#ffd166", poker:"#7c3aed", retro:"#06d6a0" };
-  const TYPE_ICON  = { board:"📋", poker:"🃏", retro:"🏁" };
+  const COLORS_LIST = ["#7c3aed","#06d6a0","#ffd166","#ff4d6d","#38bdf8","#fb7185","#a3e635","#f97316"];
 
   return(
     <div style={{minHeight:"100vh",background:"#08080f",display:"flex",flexDirection:"column"}}>
@@ -151,140 +171,97 @@ const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
         <button onClick={onSignOut} style={btn("rgba(255,77,109,0.15)","#ff4d6d",{padding:"6px 12px",fontSize:11})}>Sign Out</button>
       </div>
 
-      <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+      {/* Content */}
+      <div style={{flex:1,overflowY:"auto",padding:"32px 20px 60px",maxWidth:700,margin:"0 auto",width:"100%"}}>
 
-        {/* ── LEFT SIDEBAR — Workspaces ── */}
-        <div style={{width:220,borderRight:"1px solid rgba(255,255,255,0.06)",background:"rgba(255,255,255,0.015)",display:"flex",flexDirection:"column",flexShrink:0}}>
-          <div style={{padding:"16px 14px 10px",fontFamily:"Syne",fontSize:10,color:"#475569",letterSpacing:2}}>WORKSPACES</div>
+        <div style={{marginBottom:28}}>
+          <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:6}}>My Teams</div>
+          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>Each team has its own Board, Poker and Retro — all your tools in one place.</div>
+        </div>
 
-          {workspaces.map(ws=>(
-            <div key={ws.id} style={{display:"flex",alignItems:"center",borderLeft:`3px solid ${activeWs?.id===ws.id?"#7c3aed":"transparent"}`,background:activeWs?.id===ws.id?"rgba(124,58,237,0.15)":"transparent",transition:"all 0.15s"}}
-              onMouseEnter={e=>e.currentTarget.querySelector(".ws-del").style.opacity="1"}
-              onMouseLeave={e=>e.currentTarget.querySelector(".ws-del").style.opacity="0"}>
-              <button onClick={()=>setActiveWs(ws)}
-                style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"none",border:"none",cursor:"pointer",textAlign:"left",flex:1}}>
-                <div style={{width:30,height:30,borderRadius:9,background:"linear-gradient(135deg,#7c3aed,#5b21b6)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:12,color:"white",flexShrink:0}}>
-                  {ws.name.slice(0,1).toUpperCase()}
-                </div>
-                <div style={{flex:1,overflow:"hidden"}}>
-                  <div style={{fontFamily:"DM Sans",fontSize:12,fontWeight:600,color:"#e2e8f0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ws.name}</div>
-                  <div style={{fontFamily:"DM Sans",fontSize:10,color:"#475569",textTransform:"capitalize"}}>{ws.plan} plan</div>
-                </div>
+        {/* Create new team */}
+        {creating ? (
+          <div style={{background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.25)",borderRadius:16,padding:20,marginBottom:20}}>
+            <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"white",marginBottom:12}}>New Team Name</div>
+            <input value={teamName} onChange={e=>setTeamName(e.target.value)} placeholder="e.g. Frontend Team, Marketing, Design..."
+              autoFocus onKeyDown={e=>e.key==="Enter"&&createTeam()}
+              style={{...inp(),marginBottom:12}}/>
+            {error&&<div style={{fontFamily:"DM Sans",fontSize:12,color:"#ff4d6d",marginBottom:10}}>{error}</div>}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={createTeam} disabled={loading}
+                style={btn("#7c3aed","white",{flex:1,padding:"11px",fontSize:13,opacity:loading?0.6:1})}>
+                {loading?"Creating…":"🚀 Create Team"}
               </button>
-              <button className="ws-del" onClick={()=>deleteWorkspace(ws)}
-                style={{opacity:0,transition:"opacity 0.15s",background:"none",border:"none",color:"#ff4d6d",cursor:"pointer",padding:"0 10px",fontSize:14,lineHeight:1}}
-                title="Delete workspace">×</button>
+              <button onClick={()=>{setCreating(false);setError("");}}
+                style={btn("rgba(255,255,255,0.06)","#64748b",{padding:"11px 16px"})}>Cancel</button>
             </div>
-          ))}
-
-          {/* Add workspace */}
-          {creating ? (
-            <div style={{padding:"10px 14px"}}>
-              <input value={newWsName} onChange={e=>setNewWsName(e.target.value)} placeholder="Team name..." autoFocus
-                onKeyDown={e=>e.key==="Enter"&&createWorkspace()}
-                style={{...inp(),fontSize:12,marginBottom:6}}/>
-              <div style={{display:"flex",gap:6}}>
-                <button onClick={createWorkspace} disabled={loading} style={btn("#7c3aed","white",{flex:1,padding:"6px",fontSize:11})}>Create</button>
-                <button onClick={()=>setCreating(false)} style={btn("rgba(255,255,255,0.06)","#64748b",{padding:"6px 8px",fontSize:11})}>✕</button>
-              </div>
-            </div>
-          ) : (
+          </div>
+        ) : (
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:24}}>
             <button onClick={()=>setCreating(true)}
-              style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"none",border:"none",cursor:"pointer",color:"#334155",fontFamily:"DM Sans",fontSize:12,width:"100%",transition:"color 0.15s"}}
-              onMouseEnter={e=>e.currentTarget.style.color="#7c3aed"} onMouseLeave={e=>e.currentTarget.style.color="#334155"}>
-              + New Workspace
+              style={btn("#7c3aed","white",{padding:"12px 20px",fontSize:13,borderRadius:12})}>
+              + New Team
             </button>
-          )}
-        </div>
-
-        {/* ── MAIN CONTENT ── */}
-        <div style={{flex:1,overflowY:"auto",padding:"24px 24px 48px"}}>
-
-          {/* Workspace header */}
-          <div style={{marginBottom:24}}>
-            <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:4}}>
-              {activeWs ? activeWs.name : "My Rooms"}
-            </div>
-            <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>
-              {activeWs ? "Manage rooms for this team" : "All your recent rooms"}
+            <div style={{display:"flex",gap:8,alignItems:"center",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"8px 14px",flex:1,minWidth:180}}>
+              <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())}
+                placeholder="Join by room code..."
+                style={{background:"none",border:"none",color:"white",fontFamily:"Syne",fontSize:13,letterSpacing:1,outline:"none",flex:1,minWidth:0}}
+                onKeyDown={e=>e.key==="Enter"&&joinByCode()}/>
+              <button onClick={joinByCode} disabled={loading}
+                style={btn("#06d6a0","#0d0d1c",{padding:"6px 14px",fontSize:12,flexShrink:0})}>Join</button>
             </div>
           </div>
+        )}
 
-          {/* Create new room */}
-          <div style={{marginBottom:28}}>
-            <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:2,marginBottom:12}}>START A SESSION</div>
-            {showNewRoom ? (
-              <div style={{background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:16,padding:20,marginBottom:16}}>
-                <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"white",marginBottom:14}}>Choose session type:</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
-                  {ROOM_TYPES.map(r=>(
-                    <button key={r.type} onClick={()=>createRoom(r.type)} disabled={loading}
-                      style={{background:`${TYPE_COLOR[r.type]}11`,border:`1.5px solid ${TYPE_COLOR[r.type]}33`,borderRadius:14,padding:"16px 14px",cursor:"pointer",textAlign:"left",transition:"all 0.2s"}}
-                      onMouseEnter={e=>{e.currentTarget.style.background=`${TYPE_COLOR[r.type]}22`;e.currentTarget.style.borderColor=TYPE_COLOR[r.type];}}
-                      onMouseLeave={e=>{e.currentTarget.style.background=`${TYPE_COLOR[r.type]}11`;e.currentTarget.style.borderColor=`${TYPE_COLOR[r.type]}33`;}}>
-                      <div style={{fontSize:24,marginBottom:8}}>{r.icon}</div>
-                      <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"white",marginBottom:3}}>{r.label}</div>
-                      <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",lineHeight:1.4}}>{r.desc}</div>
-                    </button>
-                  ))}
-                </div>
-                <button onClick={()=>setShowNewRoom(false)} style={{marginTop:12,background:"none",border:"none",color:"#475569",cursor:"pointer",fontFamily:"DM Sans",fontSize:12}}>Cancel</button>
-              </div>
-            ) : (
-              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                <button onClick={()=>setShowNewRoom(true)}
-                  style={btn("#7c3aed","white",{padding:"11px 20px",fontSize:13,borderRadius:12})}>
-                  + Create New Room
-                </button>
-                <div style={{display:"flex",gap:8,alignItems:"center",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"8px 12px",flex:1,minWidth:200}}>
-                  <input value={joiningCode} onChange={e=>setJoiningCode(e.target.value.toUpperCase())}
-                    placeholder="Join by code e.g. BOARD-7X9P"
-                    style={{background:"none",border:"none",color:"white",fontFamily:"Syne",fontSize:13,letterSpacing:1,outline:"none",flex:1}}
-                    onKeyDown={e=>e.key==="Enter"&&joinByCode()}/>
-                  <button onClick={joinByCode} disabled={loading} style={btn("#06d6a0","#0d0d1c",{padding:"6px 12px",fontSize:11,flexShrink:0})}>Join</button>
-                </div>
-              </div>
-            )}
-            {error&&<div style={{fontFamily:"DM Sans",fontSize:12,color:"#ff4d6d",marginTop:8}}>{error}</div>}
+        {error&&!creating&&<div style={{fontFamily:"DM Sans",fontSize:12,color:"#ff4d6d",marginBottom:12}}>{error}</div>}
+
+        {/* Team cards */}
+        {teams.length===0 ? (
+          <div style={{background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.07)",borderRadius:16,padding:"48px 20px",textAlign:"center"}}>
+            <div style={{fontSize:36,marginBottom:12}}>🏢</div>
+            <div style={{fontFamily:"Syne",fontSize:16,fontWeight:700,color:"#334155",marginBottom:6}}>No teams yet</div>
+            <div style={{fontFamily:"DM Sans",fontSize:13,color:"#1e293b",marginBottom:20}}>Create your first team to get started</div>
+            <button onClick={()=>setCreating(true)} style={btn("#7c3aed","white",{padding:"11px 24px",fontSize:13})}>+ Create First Team</button>
           </div>
-
-          {/* Recent rooms */}
-          <div>
-            <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:2,marginBottom:14}}>RECENT ROOMS</div>
-            {recentRooms.length===0 ? (
-              <div style={{background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.07)",borderRadius:14,padding:"32px 20px",textAlign:"center"}}>
-                <div style={{fontSize:28,marginBottom:8}}>📭</div>
-                <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"#334155",marginBottom:4}}>No rooms yet</div>
-                <div style={{fontFamily:"DM Sans",fontSize:12,color:"#1e293b"}}>Create your first room above</div>
-              </div>
-            ) : (
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:12}}>
-                {recentRooms.map(r=>(
-                  <button key={r.id} onClick={async()=>{
-                      setLoading(true);
-                      try {
-                        await supabase.from("participants").upsert({
-                          room_id:r.id, user_id:userId, display_name:displayName,
-                          avatar:displayName.slice(0,2).toUpperCase(), color, role:"host", online:true
-                        }, {onConflict:"room_id,user_id"});
-                        onEnterRoom({userId,displayName,color,room:r,role:"host",user:session?.user});
-                      } catch(e){} finally{setLoading(false);}
-                    }}
-                    style={{background:"rgba(255,255,255,0.03)",border:`1px solid rgba(255,255,255,0.07)`,borderRadius:14,padding:"16px",cursor:"pointer",textAlign:"left",transition:"all 0.2s",borderTop:`3px solid ${TYPE_COLOR[r.type]||"#7c3aed"}`}}
-                    onMouseEnter={e=>{e.currentTarget.style.background="rgba(124,58,237,0.08)";e.currentTarget.style.borderColor="#7c3aed";}}
-                    onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.03)";e.currentTarget.style.borderColor="rgba(255,255,255,0.07)";}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                      <span style={{fontSize:18}}>{TYPE_ICON[r.type]||"📋"}</span>
-                      <span style={{fontFamily:"Syne",fontSize:10,color:TYPE_COLOR[r.type]||"#7c3aed",letterSpacing:1,fontWeight:700}}>{r.type?.toUpperCase()}</span>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+            {teams.map((team,i)=>(
+              <div key={team.id}
+                style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:18,overflow:"hidden",transition:"all 0.2s",position:"relative"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor="#7c3aed";e.currentTarget.style.background="rgba(124,58,237,0.07)";}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.07)";e.currentTarget.style.background="rgba(255,255,255,0.03)";}}>
+                {/* Color bar */}
+                <div style={{height:4,background:COLORS_LIST[i%COLORS_LIST.length]}}/>
+                <div style={{padding:"18px 18px 14px"}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:12,marginBottom:14}}>
+                    <div style={{width:40,height:40,borderRadius:12,background:`${COLORS_LIST[i%COLORS_LIST.length]}22`,border:`1.5px solid ${COLORS_LIST[i%COLORS_LIST.length]}44`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:16,color:COLORS_LIST[i%COLORS_LIST.length],flexShrink:0}}>
+                      {team.name.slice(0,1).toUpperCase()}
                     </div>
-                    <div style={{fontFamily:"Syne",fontSize:15,fontWeight:800,color:"white",letterSpacing:1,marginBottom:4}}>{r.code}</div>
-                    <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569"}}>{new Date(r.created_at).toLocaleDateString()}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontFamily:"Syne",fontSize:16,fontWeight:800,color:"white",marginBottom:2}}>{team.name}</div>
+                      <div style={{fontFamily:"DM Mono",fontSize:10,color:"#475569",letterSpacing:1}}>{team.roomCode}</div>
+                    </div>
+                    <button onClick={()=>deleteTeam(team)}
+                      style={{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:16,padding:"2px 4px",lineHeight:1,flexShrink:0}}
+                      title="Delete team">×</button>
+                  </div>
+
+                  {/* Tool badges */}
+                  <div style={{display:"flex",gap:6,marginBottom:14}}>
+                    {["📋 Board","🃏 Poker","🏁 Retro"].map(t=>(
+                      <span key={t} style={{fontFamily:"DM Sans",fontSize:10,color:"#475569",background:"rgba(255,255,255,0.05)",borderRadius:6,padding:"3px 8px"}}>{t}</span>
+                    ))}
+                  </div>
+
+                  <button onClick={()=>enterTeam(team)} disabled={loading}
+                    style={btn("#7c3aed","white",{width:"100%",padding:"10px",fontSize:13,borderRadius:10})}>
+                    {loading?"Loading…":"Enter Team →"}
                   </button>
-                ))}
+                </div>
               </div>
-            )}
+            ))}
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
