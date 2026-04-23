@@ -394,6 +394,7 @@ const RETRO_TEMPLATES = {
   four_ls:             { name:"4Ls",                    emoji:"📋", cols:[ {id:"liked",label:"Liked",emoji:"👍",color:"#06d6a0"}, {id:"learned",label:"Learned",emoji:"📚",color:"#7c3aed"}, {id:"lacked",label:"Lacked",emoji:"😕",color:"#ffd166"}, {id:"longed",label:"Longed For",emoji:"🌟",color:"#ff4d6d"} ] },
   kalm:                { name:"KALM",                   emoji:"⚖️", cols:[ {id:"keep",label:"Keep",emoji:"🔒",color:"#06d6a0"}, {id:"add",label:"Add",emoji:"➕",color:"#7c3aed"}, {id:"less",label:"Less",emoji:"➖",color:"#ffd166"}, {id:"more",label:"More",emoji:"📈",color:"#ff4d6d"} ] },
 };
+const TIMER_PRESETS = [
   { label:"1 min",  seconds:60  },
   { label:"2 min",  seconds:120 },
   { label:"3 min",  seconds:180 },
