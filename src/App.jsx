@@ -1918,9 +1918,6 @@ export default function SprintVibe() {
     setSession(updatedSession);
     try { localStorage.setItem("sprintvibe_session", JSON.stringify(updatedSession)); } catch(e) {}
   };
-    setSession(updatedSession);
-    try { localStorage.setItem("sprintvibe_session", JSON.stringify(updatedSession)); } catch(e) {}
-  };
 
   // ── Session persistence — restore on refresh ─────────────
   useEffect(() => {
