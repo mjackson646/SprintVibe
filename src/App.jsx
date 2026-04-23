@@ -21,6 +21,68 @@ const FontLoader = () => {
 };
 
 // ─────────────────────────────────────────────────────────────
+//  RESET PASSWORD PAGE
+// ─────────────────────────────────────────────────────────────
+const ResetPasswordPage = ({ onDone }) => {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm]   = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [msg, setMsg]           = useState("");
+  const [done, setDone]         = useState(false);
+
+  const save = async () => {
+    if (!password || password !== confirm) { setMsg("Passwords don't match"); return; }
+    if (password.length < 6) { setMsg("Password must be at least 6 characters"); return; }
+    setLoading(true); setMsg("");
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      setDone(true);
+      setTimeout(onDone, 2500);
+    } catch(e) { setMsg(e.message || "Failed to update password"); }
+    finally { setLoading(false); }
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:"#08080f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{maxWidth:420,width:"100%"}}>
+        <div style={{fontFamily:"Syne",fontWeight:800,fontSize:22,color:"white",letterSpacing:-0.5,marginBottom:4,textAlign:"center"}}>
+          Sprint<span style={{color:"#7c3aed"}}>Vibe</span>
+        </div>
+        {done ? (
+          <div style={{textAlign:"center",marginTop:32}}>
+            <div style={{fontSize:40,marginBottom:12}}>✅</div>
+            <div style={{fontFamily:"Syne",fontSize:20,fontWeight:800,color:"white",marginBottom:6}}>Password updated!</div>
+            <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b"}}>Taking you back to the home page…</div>
+          </div>
+        ) : (
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:18,padding:28,marginTop:24}}>
+            <div style={{fontFamily:"Syne",fontSize:20,fontWeight:800,color:"white",marginBottom:4}}>Set new password</div>
+            <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b",marginBottom:20}}>Choose a strong password for your account</div>
+            <div style={{marginBottom:12}}>
+              <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:5}}>New password</div>
+              <input type="password" value={password} onChange={e=>setPassword(e.target.value)}
+                placeholder="At least 6 characters" style={inp()} autoFocus/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:5}}>Confirm password</div>
+              <input type="password" value={confirm} onChange={e=>setConfirm(e.target.value)}
+                placeholder="Same password again" style={inp()}
+                onKeyDown={e=>e.key==="Enter"&&save()}/>
+            </div>
+            {msg&&<div style={{background:"rgba(255,77,109,0.1)",border:"1px solid rgba(255,77,109,0.2)",borderRadius:9,padding:"9px 12px",marginBottom:14,fontFamily:"DM Sans",fontSize:13,color:"#ff4d6d"}}>{msg}</div>}
+            <button onClick={save} disabled={loading}
+              style={btn("#7c3aed","white",{width:"100%",padding:"13px",fontSize:14,opacity:loading?0.6:1})}>
+              {loading?"Updating…":"Update Password →"}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
 //  LANDING PAGE — bold & energetic
 // ─────────────────────────────────────────────────────────────
 const LandingPage = ({ onGetStarted, onJoin, onSignIn }) => {
@@ -1859,12 +1921,18 @@ export default function SprintVibe() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("join")) { setScreen("onboarding"); return; }
 
+    // Detect password reset link — Supabase puts token in URL hash
+    const hash = window.location.hash;
+    if (hash.includes("access_token") && hash.includes("type=recovery")) {
+      setScreen("resetpassword");
+      return;
+    }
+
     // Try to restore session from localStorage
     try {
       const saved = localStorage.getItem("sprintvibe_session");
       if (saved) {
         const sess = JSON.parse(saved);
-        // Verify room still exists before restoring
         if (sess?.room?.id && sess?.userId) {
           setSession(sess);
           setScreen("app");
@@ -1876,7 +1944,6 @@ export default function SprintVibe() {
     // Check Supabase auth session
     supabase.auth.getSession().then(({ data: { session: authSess } }) => {
       if (authSess?.user) {
-        // Authenticated user — go to onboarding to pick/create room
         setScreen("onboarding");
       }
     });
@@ -2028,6 +2095,15 @@ export default function SprintVibe() {
   const STYLES = `*{-webkit-tap-highlight-color:transparent;}body{margin:0;background:#08080f;}@keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}@keyframes flipIn{from{opacity:0;transform:rotateY(90deg)}to{opacity:1;transform:rotateY(0)}}@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}@keyframes noteIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}select option{background:#0d0d1c}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(124,58,237,0.3);border-radius:2px}input,textarea,select{-webkit-appearance:none;}`;
 
   // ── LANDING PAGE ─────────────────────────────────────────
+  // ── RESET PASSWORD ───────────────────────────────────────
+  if (screen === "resetpassword") return(
+    <>
+      <FontLoader/>
+      <style>{STYLES}</style>
+      <ResetPasswordPage onDone={()=>goTo("landing")}/>
+    </>
+  );
+
   if (screen === "landing") return(
     <>
       <FontLoader/>
