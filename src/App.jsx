@@ -62,7 +62,7 @@ const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
         room_id: room.id, user_id: userId, display_name: displayName,
         avatar: displayName.slice(0,2).toUpperCase(), color, role:"host", online:true
       }, { onConflict:"room_id,user_id" });
-      onEnterRoom({ userId, displayName, color, room, role:"host", user: session?.user });
+      onEnterRoom({ userId, displayName, color, room, role:"host", user: session?.user, workspaceName: team.name });
     } catch(e) { setError("Could not enter workspace — try refreshing"); }
     finally { setLoading(false); }
   };
@@ -383,7 +383,17 @@ const RETRO_COLS = [
   { id:"improve",      label:"To Improve",  emoji:"🔧", color:"#ffd166" },
   { id:"action_items", label:"Action Items",emoji:"⚡", color:"#ff4d6d" },
 ];
-const TIMER_PRESETS = [
+
+// ─────────────────────────────────────────────────────────────
+//  RETROSPECTIVE TEMPLATES
+// ─────────────────────────────────────────────────────────────
+const RETRO_TEMPLATES = {
+  standard:            { name:"Standard",              emoji:"🏁", cols:[ {id:"went_well",label:"Went Well",emoji:"✅",color:"#06d6a0"}, {id:"improve",label:"To Improve",emoji:"🔧",color:"#ffd166"}, {id:"action_items",label:"Action Items",emoji:"⚡",color:"#ff4d6d"} ] },
+  start_stop_continue: { name:"Start / Stop / Continue",emoji:"🔄", cols:[ {id:"start",label:"Start",emoji:"🚀",color:"#06d6a0"}, {id:"stop",label:"Stop",emoji:"🛑",color:"#ff4d6d"}, {id:"cont",label:"Continue",emoji:"✅",color:"#7c3aed"} ] },
+  mad_sad_glad:        { name:"Mad / Sad / Glad",       emoji:"😊", cols:[ {id:"mad",label:"Mad",emoji:"😤",color:"#ff4d6d"}, {id:"sad",label:"Sad",emoji:"😢",color:"#ffd166"}, {id:"glad",label:"Glad",emoji:"😊",color:"#06d6a0"} ] },
+  four_ls:             { name:"4Ls",                    emoji:"📋", cols:[ {id:"liked",label:"Liked",emoji:"👍",color:"#06d6a0"}, {id:"learned",label:"Learned",emoji:"📚",color:"#7c3aed"}, {id:"lacked",label:"Lacked",emoji:"😕",color:"#ffd166"}, {id:"longed",label:"Longed For",emoji:"🌟",color:"#ff4d6d"} ] },
+  kalm:                { name:"KALM",                   emoji:"⚖️", cols:[ {id:"keep",label:"Keep",emoji:"🔒",color:"#06d6a0"}, {id:"add",label:"Add",emoji:"➕",color:"#7c3aed"}, {id:"less",label:"Less",emoji:"➖",color:"#ffd166"}, {id:"more",label:"More",emoji:"📈",color:"#ff4d6d"} ] },
+};
   { label:"1 min",  seconds:60  },
   { label:"2 min",  seconds:120 },
   { label:"3 min",  seconds:180 },
@@ -935,21 +945,93 @@ const Onboarding = ({ onEnter, initialMode="welcome" }) => {
 //  KANBAN CARD
 // ─────────────────────────────────────────────────────────────
 const KanbanCard = ({ story, columnId, onDrop, onDelete }) => {
-  const [dragging,setDragging]=useState(false);
-  const [showDel,setShowDel]=useState(false);
-  const PC={high:"#ff4d6d",medium:"#ffd166",low:"#06d6a0"};
-  const tr=useRef(null);
-  const onTS=e=>{const t=e.touches[0];tr.current={x:t.clientX,y:t.clientY};};
-  const onTE=e=>{if(!tr.current)return;const t=e.changedTouches[0];const col=document.elementFromPoint(t.clientX,t.clientY)?.closest("[data-col]");if(col&&col.dataset.col!==columnId)onDrop(story.id,columnId,col.dataset.col);tr.current=null;};
+  const [dragging, setDragging] = useState(false);
+  const [showDel, setShowDel]   = useState(false);
+  const PC      = { high:"#ff4d6d", medium:"#ffd166", low:"#06d6a0" };
+  const cardRef = useRef(null);
+  const ghostRef = useRef(null);
+  const touchRef = useRef(null);
+
+  // ── Touch drag ───────────────────────────────────────────
+  const onTouchStart = (e) => {
+    const touch = e.touches[0];
+    const rect  = cardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    touchRef.current = {
+      offsetX: touch.clientX - rect.left,
+      offsetY: touch.clientY - rect.top,
+      moved: false,
+    };
+    // Short delay so quick taps don't trigger drag
+    touchRef.current.timer = setTimeout(() => {
+      if (!touchRef.current) return;
+      setDragging(true);
+      const ghost = cardRef.current.cloneNode(true);
+      Object.assign(ghost.style, {
+        position:"fixed", width:rect.width+"px", opacity:"0.9",
+        pointerEvents:"none", zIndex:"9999",
+        left:(touch.clientX - touchRef.current.offsetX)+"px",
+        top:(touch.clientY - touchRef.current.offsetY)+"px",
+        borderColor:"#7c3aed", background:"rgba(124,58,237,0.25)",
+        transform:"rotate(2deg) scale(1.04)",
+        boxShadow:"0 20px 60px rgba(0,0,0,0.6)",
+        transition:"none", borderRadius:"12px",
+      });
+      document.body.appendChild(ghost);
+      ghostRef.current = ghost;
+    }, 180);
+  };
+
+  const onTouchMove = (e) => {
+    if (!touchRef.current) return;
+    touchRef.current.moved = true;
+    if (!ghostRef.current) { clearTimeout(touchRef.current.timer); return; }
+    e.preventDefault();
+    const touch = e.touches[0];
+    ghostRef.current.style.left = (touch.clientX - touchRef.current.offsetX) + "px";
+    ghostRef.current.style.top  = (touch.clientY - touchRef.current.offsetY) + "px";
+    // Highlight drop targets
+    document.querySelectorAll("[data-col]").forEach(col => {
+      const r = col.getBoundingClientRect();
+      const over = touch.clientX >= r.left && touch.clientX <= r.right &&
+                   touch.clientY >= r.top  && touch.clientY <= r.bottom;
+      col.style.borderColor  = over ? "#7c3aed" : "";
+      col.style.background   = over ? "rgba(124,58,237,0.12)" : "";
+    });
+  };
+
+  const onTouchEnd = (e) => {
+    clearTimeout(touchRef.current?.timer);
+    // Reset column highlights
+    document.querySelectorAll("[data-col]").forEach(col => {
+      col.style.borderColor = ""; col.style.background = "";
+    });
+    if (ghostRef.current) { ghostRef.current.remove(); ghostRef.current = null; }
+    setDragging(false);
+    if (!touchRef.current?.moved) { touchRef.current = null; return; }
+    const touch = e.changedTouches[0];
+    const col = document.elementFromPoint(touch.clientX, touch.clientY)?.closest("[data-col]");
+    if (col && col.dataset.col !== columnId) onDrop(story.id, columnId, col.dataset.col);
+    touchRef.current = null;
+  };
+
   return(
-    <div draggable onDragStart={e=>{setDragging(true);e.dataTransfer.setData("cid",story.id);e.dataTransfer.setData("from",columnId);}} onDragEnd={()=>setDragging(false)}
-      onTouchStart={onTS} onTouchEnd={onTE}
-      onMouseEnter={()=>setShowDel(true)} onMouseLeave={()=>setShowDel(false)}
-      style={{background:dragging?"rgba(124,58,237,0.14)":"rgba(255,255,255,0.06)",border:`1px solid ${dragging?"#7c3aed":"rgba(255,255,255,0.09)"}`,borderRadius:12,padding:"11px 13px",marginBottom:9,cursor:"grab",opacity:dragging?0.5:1,transition:"all 0.18s",userSelect:"none",touchAction:"none",position:"relative"}}>
+    <div ref={cardRef}
+      draggable
+      onDragStart={e=>{ setDragging(true); e.dataTransfer.setData("cid",story.id); e.dataTransfer.setData("from",columnId); }}
+      onDragEnd={()=>setDragging(false)}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onMouseEnter={()=>setShowDel(true)}
+      onMouseLeave={()=>setShowDel(false)}
+      style={{background:dragging?"rgba(124,58,237,0.14)":"rgba(255,255,255,0.06)",border:`1px solid ${dragging?"#7c3aed":"rgba(255,255,255,0.09)"}`,borderRadius:12,padding:"11px 13px",marginBottom:9,cursor:"grab",opacity:dragging?0.4:1,transition:"opacity 0.18s",userSelect:"none",touchAction:"none",position:"relative"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
         <span style={{width:7,height:7,borderRadius:"50%",background:PC[story.priority]||"#888",flexShrink:0}}/>
         <span style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",fontWeight:500,flex:1,lineHeight:1.3}}>{story.title}</span>
-        {story.points?<span style={{background:"#7c3aed",color:"white",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,fontFamily:"Syne"}}>{story.points}</span>:<span style={{background:"rgba(255,255,255,0.05)",color:"#475569",borderRadius:6,padding:"2px 7px",fontSize:10}}>–</span>}
+        {story.points
+          ? <span style={{background:"#7c3aed",color:"white",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,fontFamily:"Syne"}}>{story.points}</span>
+          : <span style={{background:"rgba(255,255,255,0.05)",color:"#475569",borderRadius:6,padding:"2px 7px",fontSize:10}}>–</span>}
         {showDel&&onDelete&&(
           <button onClick={e=>{e.stopPropagation();onDelete(story.id,columnId);}}
             style={{width:20,height:20,borderRadius:5,border:"none",background:"rgba(255,77,109,0.25)",color:"#ff4d6d",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,lineHeight:1,flexShrink:0}}
@@ -957,7 +1039,10 @@ const KanbanCard = ({ story, columnId, onDrop, onDelete }) => {
         )}
       </div>
       {story.description&&<div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:5,lineHeight:1.4}}>{story.description}</div>}
-      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{story.tags?.map(t=><span key={t} style={{background:"rgba(255,255,255,0.05)",borderRadius:4,padding:"1px 6px",fontSize:10,color:"#64748b"}}>{t}</span>)}</div>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+        {story.tags?.map(t=><span key={t} style={{background:"rgba(255,255,255,0.05)",borderRadius:4,padding:"1px 6px",fontSize:10,color:"#64748b"}}>{t}</span>)}
+        {story.assignee&&<span style={{background:"rgba(124,58,237,0.15)",borderRadius:4,padding:"1px 7px",fontSize:10,color:"#a78bfa",marginLeft:"auto"}}>👤 {story.assignee}</span>}
+      </div>
     </div>
   );
 };
@@ -965,32 +1050,57 @@ const KanbanCard = ({ story, columnId, onDrop, onDelete }) => {
 // ─────────────────────────────────────────────────────────────
 //  DROP COLUMN
 // ─────────────────────────────────────────────────────────────
-const DropColumn = ({ id, title, stories, color, onDrop, onAdd, onDelete }) => {
-  const [over,setOver]=useState(false);
-  const [adding,setAdding]=useState(false);
-  const [form,setForm]=useState({title:"",description:"",priority:"medium",tags:""});
+const DropColumn = ({ id, title, stories, color, onDrop, onAdd, onDelete, onRenameCol, participants=[] }) => {
+  const [over,setOver]         = useState(false);
+  const [adding,setAdding]     = useState(false);
+  const [editingTitle,setEditingTitle] = useState(false);
+  const [draftTitle,setDraftTitle]     = useState(title);
+  const [form,setForm] = useState({title:"",description:"",priority:"medium",tags:"",assignee:""});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+
   const submit=()=>{
     if(!form.title.trim())return;
-    onAdd(id,{id:`s${Date.now()}`,title:form.title.trim(),description:form.description.trim(),priority:form.priority,tags:form.tags.split(",").map(t=>t.trim()).filter(Boolean),points:null});
-    setForm({title:"",description:"",priority:"medium",tags:""});setAdding(false);
+    onAdd(id,{id:`s${Date.now()}`,title:form.title.trim(),description:form.description.trim(),priority:form.priority,tags:form.tags.split(",").map(t=>t.trim()).filter(Boolean),points:null,assignee:form.assignee||null});
+    setForm({title:"",description:"",priority:"medium",tags:"",assignee:""});setAdding(false);
   };
+
+  const commitRename = () => {
+    if (draftTitle.trim()) onRenameCol?.(id, draftTitle.trim());
+    setEditingTitle(false);
+  };
+
   return(
-    <div data-col={id} onDragOver={e=>{e.preventDefault();setOver(true);}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setOver(false);}} onDrop={e=>{e.preventDefault();setOver(false);const cid=e.dataTransfer.getData("cid");const fr=e.dataTransfer.getData("from");if(cid&&fr!==id)onDrop(cid,fr,id);}}
+    <div data-col={id}
+      onDragOver={e=>{e.preventDefault();setOver(true);}}
+      onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setOver(false);}}
+      onDrop={e=>{e.preventDefault();setOver(false);const cid=e.dataTransfer.getData("cid");const fr=e.dataTransfer.getData("from");if(cid&&fr!==id)onDrop(cid,fr,id);}}
       style={{flex:"0 0 250px",background:over?"rgba(124,58,237,0.09)":"rgba(255,255,255,0.025)",border:`1.5px solid ${over?"#7c3aed":"rgba(255,255,255,0.07)"}`,borderRadius:16,padding:14,transition:"all 0.2s",minHeight:420,display:"flex",flexDirection:"column"}}>
+
+      {/* Column header — click title to rename */}
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}>
-        <span style={{width:9,height:9,borderRadius:3,background:color}}/><span style={{fontFamily:"Syne",fontWeight:700,color:"#e2e8f0",fontSize:13}}>{title}</span>
-        <span style={{marginLeft:"auto",background:"rgba(255,255,255,0.07)",borderRadius:20,padding:"1px 8px",fontSize:11,color:"#475569"}}>{stories.length}</span>
+        <span style={{width:9,height:9,borderRadius:3,background:color,flexShrink:0}}/>
+        {editingTitle ? (
+          <input autoFocus value={draftTitle} onChange={e=>setDraftTitle(e.target.value)}
+            onBlur={commitRename} onKeyDown={e=>{if(e.key==="Enter")commitRename();if(e.key==="Escape")setEditingTitle(false);}}
+            style={{...inp(),padding:"3px 8px",fontSize:13,fontFamily:"Syne",fontWeight:700,flex:1,height:24}}/>
+        ) : (
+          <span onClick={()=>{setDraftTitle(title);setEditingTitle(true);}}
+            title="Click to rename"
+            style={{fontFamily:"Syne",fontWeight:700,color:"#e2e8f0",fontSize:13,cursor:"text",flex:1}}>{title}</span>
+        )}
+        <span style={{marginLeft:"auto",background:"rgba(255,255,255,0.07)",borderRadius:20,padding:"1px 8px",fontSize:11,color:"#475569",flexShrink:0}}>{stories.length}</span>
       </div>
+
       <div style={{flex:1}}>
         {stories.map(s=><KanbanCard key={s.id} story={s} columnId={id} onDrop={onDrop} onDelete={onDelete}/>)}
         {stories.length===0&&!adding&&<div style={{textAlign:"center",color:"#1e293b",fontSize:12,marginTop:32,fontFamily:"DM Sans"}}>No stories yet</div>}
       </div>
+
       {adding?(
         <div style={{marginTop:10,background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:12,padding:12}}>
           <input autoFocus value={form.title} onChange={e=>set("title",e.target.value)} onKeyDown={e=>e.key==="Escape"&&setAdding(false)} placeholder="Story title *" style={{...inp(),marginBottom:8}}/>
           <textarea value={form.description} onChange={e=>set("description",e.target.value)} placeholder="Description / acceptance criteria…" rows={2} style={{...inp(),resize:"none",marginBottom:8}}/>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
             <div>
               <div style={{fontFamily:"DM Sans",fontSize:10,color:"#475569",marginBottom:4}}>Priority</div>
               <select value={form.priority} onChange={e=>set("priority",e.target.value)} style={{...inp(),padding:"7px 10px",fontSize:12}}>
@@ -1002,6 +1112,15 @@ const DropColumn = ({ id, title, stories, color, onDrop, onAdd, onDelete }) => {
               <input value={form.tags} onChange={e=>set("tags",e.target.value)} placeholder="auth, UI…" style={{...inp(),padding:"7px 10px",fontSize:12}}/>
             </div>
           </div>
+          {participants.length>0&&(
+            <div style={{marginBottom:8}}>
+              <div style={{fontFamily:"DM Sans",fontSize:10,color:"#475569",marginBottom:4}}>Assign to</div>
+              <select value={form.assignee} onChange={e=>set("assignee",e.target.value)} style={{...inp(),padding:"7px 10px",fontSize:12}}>
+                <option value="">Unassigned</option>
+                {participants.map(p=><option key={p.id} value={p.display_name}>{p.display_name}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{display:"flex",gap:6}}>
             <button onClick={submit} style={btn("#7c3aed","white",{flex:1,padding:"8px",fontSize:12})}>＋ Add Story</button>
             <button onClick={()=>setAdding(false)} style={btn("rgba(255,255,255,0.06)","#64748b",{padding:"8px 12px",fontSize:12})}>✕</button>
@@ -1177,16 +1296,29 @@ const PokerSession = ({ stories, session, roomUrl }) => {
 // ─────────────────────────────────────────────────────────────
 const RetroView = ({ session, roomUrl }) => {
   const { userId, displayName, room, role } = session;
-  const [phase, setPhaseLocal] = useState("lobby");
-  const [notes, setNotes] = useState({ went_well:[], improve:[], action_items:[] });
-  const [myInputs, setMyInputs] = useState({ went_well:"", improve:"", action_items:"" });
-  const [votes, setVotes] = useState({});
-  const [mood, setMood] = useState(null);
+  const [phase, setPhaseLocal]   = useState("lobby");
+  const [templateKey, setTemplateKey] = useState("standard");
+  const activeCols = RETRO_TEMPLATES[templateKey]?.cols || RETRO_TEMPLATES.standard.cols;
+  const initNotes  = (cols) => Object.fromEntries(cols.map(c=>[c.id,[]]));
+  const [notes, setNotes]         = useState(()=>initNotes(activeCols));
+  const [myInputs, setMyInputs]   = useState(()=>Object.fromEntries(activeCols.map(c=>[c.id,""])));
+  const [votes, setVotes]         = useState({});
+  const [mood, setMood]           = useState(null);
   const [activeDiscuss, setActiveDiscuss] = useState(null);
   const [aiSummary, setAiSummary] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiQuestions, setAiQuestions]   = useState(null);
+  const [aiQLoading,  setAiQLoading]    = useState(false);
   const [phaseTimeLimits, setPhaseTimeLimits] = useState({ collect:300, vote:180, discuss:300 });
   const MOODS = ["😩","😕","😐","🙂","🚀"];
+
+  // When template changes, reset notes keyed by new col IDs
+  const changeTemplate = (key) => {
+    setTemplateKey(key);
+    const cols = RETRO_TEMPLATES[key].cols;
+    setNotes(initNotes(cols));
+    setMyInputs(Object.fromEntries(cols.map(c=>[c.id,""])));
+  };
 
   const collectTimer = usePhaseTimer(phase==="collect", phaseTimeLimits.collect);
   const voteTimer    = usePhaseTimer(phase==="vote",    phaseTimeLimits.vote);
@@ -1197,8 +1329,8 @@ const RetroView = ({ session, roomUrl }) => {
     if (!room) return;
     const load = async () => {
       const raw = await getRetroNotes(room.id);
-      const grouped = { went_well:[], improve:[], action_items:[] };
-      raw.forEach(n => { if(grouped[n.column_id]) grouped[n.column_id].push(n); });
+      const grouped = initNotes(activeCols);
+      raw.forEach(n => { if(grouped[n.column_id] !== undefined) grouped[n.column_id].push(n); });
       setNotes(grouped);
     };
     load();
@@ -1244,7 +1376,7 @@ const RetroView = ({ session, roomUrl }) => {
   };
 
   const totalNotes = Object.values(notes).flat().length;
-  const allNotes   = RETRO_COLS.flatMap(col=>notes[col.id].map(n=>({...n,col:col.id})));
+  const allNotes   = activeCols.flatMap(col=>notes[col.id]?.map(n=>({...n,col:col.id}))||[]);
   const topNotes   = [...allNotes].sort((a,b)=>(votes[b.id]||0)-(votes[a.id]||0)).slice(0,6);
   const totalVotes = Object.values(votes).reduce((a,b)=>a+b,0);
 
@@ -1300,6 +1432,20 @@ const RetroView = ({ session, roomUrl }) => {
       </div>
       {role==="host" ? (
         <>
+          {/* Template picker */}
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:16,marginBottom:16}}>
+            <div style={{fontFamily:"Syne",fontSize:11,color:"#64748b",letterSpacing:1,marginBottom:12}}>RETROSPECTIVE FORMAT</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8}}>
+              {Object.entries(RETRO_TEMPLATES).map(([key,tmpl])=>(
+                <button key={key} onClick={()=>changeTemplate(key)}
+                  style={{background:templateKey===key?"rgba(124,58,237,0.18)":"rgba(255,255,255,0.03)",border:`1.5px solid ${templateKey===key?"#7c3aed":"rgba(255,255,255,0.07)"}`,borderRadius:12,padding:"10px 12px",cursor:"pointer",textAlign:"left",transition:"all 0.18s"}}>
+                  <div style={{fontSize:18,marginBottom:4}}>{tmpl.emoji}</div>
+                  <div style={{fontFamily:"Syne",fontSize:11,fontWeight:700,color:templateKey===key?"#a78bfa":"#64748b"}}>{tmpl.name}</div>
+                  <div style={{fontFamily:"DM Sans",fontSize:9,color:"#334155",marginTop:3}}>{tmpl.cols.map(c=>c.label).join(" · ")}</div>
+                </button>
+              ))}
+            </div>
+          </div>
           <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:16,marginBottom:20}}>
             <div style={{fontFamily:"Syne",fontSize:11,color:"white",fontWeight:700,marginBottom:10}}>Quick mood check</div>
             <div style={{display:"flex",gap:8}}>{MOODS.map((m,i)=><button key={m} onClick={()=>setMood(i)} style={{fontSize:24,background:mood===i?"rgba(124,58,237,0.18)":"none",border:`2px solid ${mood===i?"#7c3aed":"rgba(255,255,255,0.07)"}`,borderRadius:11,padding:"6px 10px",cursor:"pointer",transform:mood===i?"scale(1.2) translateY(-2px)":"none",transition:"all 0.2s"}}>{m}</button>)}</div>
@@ -1330,7 +1476,7 @@ const RetroView = ({ session, roomUrl }) => {
         <TimerBar phaseId="collect" timer={collectTimer}/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:14}}>
-        {RETRO_COLS.map(col=>(
+        {activeCols.map(col=>(
           <div key={col.id} style={{background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:14,display:"flex",flexDirection:"column",minHeight:300}}>
             <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:12,paddingBottom:10,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
               <span style={{fontSize:15}}>{col.emoji}</span>
@@ -1370,7 +1516,7 @@ const RetroView = ({ session, roomUrl }) => {
         </div>
         <TimerBar phaseId="vote" timer={voteTimer}/>
       </div>
-      {RETRO_COLS.map(col=>{const cn=notes[col.id];if(!cn.length)return null;return(
+      {activeCols.map(col=>{const cn=notes[col.id];if(!cn.length)return null;return(
         <div key={col.id} style={{marginBottom:24}}>
           <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:10}}><span style={{fontSize:13}}>{col.emoji}</span><span style={{fontFamily:"Syne",fontSize:11,fontWeight:700,color:col.color,letterSpacing:1}}>{col.label.toUpperCase()}</span></div>
           {cn.map(n=>{const vc=votes[n.id]||n.votes||0;const canVote=totalVotes<5;return(
@@ -1402,7 +1548,7 @@ const RetroView = ({ session, roomUrl }) => {
         <TimerBar phaseId="discuss" timer={discussTimer}/>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:10,marginBottom:24}}>
-        {topNotes.map((n,i)=>{const col=RETRO_COLS.find(c=>c.id===n.col);const isAct=activeDiscuss?.id===n.id;return(
+        {topNotes.map((n,i)=>{const col=activeCols.find(c=>c.id===n.col);const isAct=activeDiscuss?.id===n.id;return(
           <button key={n.id} onClick={()=>setActiveDiscuss(n)} style={{background:isAct?"rgba(124,58,237,0.18)":"rgba(255,255,255,0.04)",border:`1.5px solid ${isAct?"#7c3aed":"rgba(255,255,255,0.07)"}`,borderRadius:13,padding:"13px",cursor:"pointer",textAlign:"left",transition:"all 0.2s",borderLeft:`4px solid ${col?.color||"#64748b"}`}}>
             <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:6}}>
               <span style={{fontFamily:"Syne",fontWeight:800,fontSize:12,color:isAct?"#a78bfa":"#64748b"}}>#{i+1}</span>
@@ -1416,9 +1562,38 @@ const RetroView = ({ session, roomUrl }) => {
         <div style={{background:"rgba(124,58,237,0.1)",border:"1px solid rgba(124,58,237,0.3)",borderRadius:16,padding:20}}>
           <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:2,marginBottom:7}}>NOW DISCUSSING</div>
           <div style={{fontFamily:"Syne",fontSize:17,fontWeight:800,color:"white",marginBottom:14}}>{activeDiscuss.text}</div>
-          {["What's the root cause?","Who owns this action?","What does success look like?"].map(q=>(
-            <div key={q} style={{fontFamily:"DM Sans",fontSize:13,color:"#94a3b8",display:"flex",gap:9,marginBottom:7,padding:"7px 11px",background:"rgba(255,255,255,0.03)",borderRadius:8}}><span style={{color:"#7c3aed",flexShrink:0}}>›</span>{q}</div>
-          ))}
+
+          {/* AI discussion questions */}
+          {aiQuestions ? (
+            <div>
+              <div style={{fontFamily:"Syne",fontSize:9,color:"#7c3aed",letterSpacing:1,marginBottom:8}}>✨ AI DISCUSSION GUIDE</div>
+              {aiQuestions.map((q,i)=>(
+                <div key={i} style={{fontFamily:"DM Sans",fontSize:13,color:"#94a3b8",display:"flex",gap:9,marginBottom:7,padding:"8px 12px",background:"rgba(255,255,255,0.04)",borderRadius:8}}>
+                  <span style={{color:"#7c3aed",flexShrink:0,fontFamily:"Syne",fontWeight:800,fontSize:11}}>{i+1}</span>{q}
+                </div>
+              ))}
+              <button onClick={()=>setAiQuestions(null)} style={btn("rgba(255,255,255,0.05)","#475569",{fontSize:11,padding:"5px 12px",marginTop:6})}>↩ Reset</button>
+            </div>
+          ) : (
+            <div>
+              {["What's the root cause?","Who owns this action?","What does success look like?"].map(q=>(
+                <div key={q} style={{fontFamily:"DM Sans",fontSize:13,color:"#94a3b8",display:"flex",gap:9,marginBottom:7,padding:"7px 11px",background:"rgba(255,255,255,0.03)",borderRadius:8}}><span style={{color:"#7c3aed",flexShrink:0}}>›</span>{q}</div>
+              ))}
+              <button onClick={async()=>{
+                setAiQLoading(true);
+                try {
+                  const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:400,system:`You are an agile facilitator. Return ONLY valid JSON array of 4 short discussion questions (strings) for this retro item. No markdown, no preamble.`,messages:[{role:"user",content:`Retro item: "${activeDiscuss.text}"`}]})});
+                  const data = await res.json();
+                  const text = data.content?.map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
+                  setAiQuestions(JSON.parse(text));
+                } catch { setAiQuestions(["What caused this?","Who should own the action?","What would success look like?","How do we prevent this next sprint?"]); }
+                finally { setAiQLoading(false); }
+              }} disabled={aiQLoading}
+                style={btn("rgba(124,58,237,0.2)","#a78bfa",{padding:"8px 16px",fontSize:12,border:"1px solid rgba(124,58,237,0.3)",marginTop:6})}>
+                {aiQLoading?"✨ Generating…":"✨ Get AI Discussion Questions"}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2287,6 +2462,9 @@ export default function SprintVibe() {
   const [workspace, setWorkspace] = useState(null);
   const [screen, setScreen]     = useState("landing");
   const [signinMode, setSigninMode] = useState("welcome");
+  const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
+  const [boardFilter, setBoardFilter] = useState(null); // null = all, string = assignee name
+  const [customColTitles, setCustomColTitles] = useState({}); // { colId: "Custom Name" }
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     try { return localStorage.getItem("sv_notif_enabled") !== "false"; } catch { return true; }
   });
@@ -2361,9 +2539,22 @@ export default function SprintVibe() {
     setSession(sess);
     setTab("board");
     setScreen("app");
+    setBoardFilter(null);
+    setGuestBannerDismissed(false);
     requestPermission();
-    // Save session to localStorage for refresh persistence
+    // Load any saved custom column titles for this room
+    try {
+      const saved = localStorage.getItem(`sv_coltitles_${sess.room?.id}`);
+      if (saved) setCustomColTitles(JSON.parse(saved));
+      else setCustomColTitles({});
+    } catch { setCustomColTitles({}); }
     try { localStorage.setItem("sprintvibe_session", JSON.stringify(sess)); } catch(e) {}
+  };
+
+  const handleRenameCol = (colId, newTitle) => {
+    const updated = { ...customColTitles, [colId]: newTitle };
+    setCustomColTitles(updated);
+    try { localStorage.setItem(`sv_coltitles_${session?.room?.id}`, JSON.stringify(updated)); } catch {}
   };
 
   const handleLeave = async () => {
@@ -2594,7 +2785,10 @@ export default function SprintVibe() {
         <div style={{padding:"12px 16px",borderBottom:"1px solid rgba(255,255,255,0.05)",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",background:"rgba(0,0,0,0.4)",backdropFilter:"blur(16px)",position:"sticky",top:0,zIndex:100}}>
           <div>
             <div style={{fontFamily:"Syne",fontWeight:800,fontSize:17,color:"white",letterSpacing:-0.5}}>Sprint<span style={{color:"#7c3aed"}}>Vibe</span></div>
-            <div style={{fontSize:10,color:"#334155"}}>Room: <span style={{color:"#7c3aed",letterSpacing:1}}>{session.room?.code}</span></div>
+            {session.workspaceName
+              ? <div style={{fontSize:12,color:"#e2e8f0",fontFamily:"Syne",fontWeight:700}}>{session.workspaceName} <span style={{color:"#334155",fontWeight:400,fontSize:10,letterSpacing:1}}>· {session.room?.code}</span></div>
+              : <div style={{fontSize:10,color:"#334155"}}>Room: <span style={{color:"#7c3aed",letterSpacing:1}}>{session.room?.code}</span></div>
+            }
           </div>
 
           {/* Progress */}
@@ -2650,20 +2844,41 @@ export default function SprintVibe() {
         {tab==="board"&&(
           <div style={{padding:"16px 16px 48px",overflowX:"auto"}}>
 
-            {/* Who's in the room — always visible on board */}
+            {/* Guest reminder banner */}
+            {session?.userId?.startsWith("guest_") && !guestBannerDismissed && (
+              <div style={{background:"rgba(255,213,0,0.08)",border:"1px solid rgba(255,213,0,0.2)",borderRadius:12,padding:"10px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:12,maxWidth:820,margin:"0 auto 16px"}}>
+                <span style={{fontSize:18,flexShrink:0}}>👤</span>
+                <div style={{flex:1}}>
+                  <span style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"#ffd166"}}>You're a guest — </span>
+                  <span style={{fontFamily:"DM Sans",fontSize:13,color:"#94a3b8"}}>Create a free account to save your progress, access rooms from any device, and never lose your board.</span>
+                </div>
+                <button onClick={()=>{ setScreen("onboarding"); setSigninMode("signup"); }} style={btn("#ffd166","#0d0d1c",{padding:"6px 14px",fontSize:12,flexShrink:0})}>Create Account</button>
+                <button onClick={()=>setGuestBannerDismissed(true)} style={{background:"none",border:"none",color:"#475569",cursor:"pointer",fontSize:18,flexShrink:0,padding:"0 4px"}}>×</button>
+              </div>
+            )}
+
+            {/* Who's in the room + Quick filter chips */}
             {participants.length>0&&(
-              <div style={{marginBottom:16,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",margin:"0 auto 16px",width:"fit-content",minWidth:"min(100%,820px)"}}>
-                <span style={{fontFamily:"Syne",fontSize:10,color:"#475569",letterSpacing:1,flexShrink:0}}>IN ROOM</span>
-                {participants.map(p=>(
-                  <div key={p.id} style={{display:"flex",alignItems:"center",gap:7,background:"rgba(255,255,255,0.04)",borderRadius:9,padding:"5px 10px"}}>
-                    <div style={{width:22,height:22,borderRadius:"50%",background:p.color||"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:9,color:"white",flexShrink:0}}>
-                      {p.avatar||p.display_name?.slice(0,2).toUpperCase()}
-                    </div>
-                    <span style={{fontFamily:"DM Sans",fontSize:12,color:"#e2e8f0"}}>{p.display_name}</span>
-                    {p.role==="host"&&<span style={{fontFamily:"Syne",fontSize:8,color:"#7c3aed",background:"rgba(124,58,237,0.15)",borderRadius:4,padding:"1px 5px"}}>HOST</span>}
-                    <span style={{width:6,height:6,borderRadius:"50%",background:p.online?"#06d6a0":"#334155",boxShadow:p.online?"0 0 5px #06d6a0":"none"}}/>
-                  </div>
-                ))}
+              <div style={{marginBottom:16,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"12px 16px",maxWidth:820,margin:"0 auto 16px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <span style={{fontFamily:"Syne",fontSize:10,color:"#475569",letterSpacing:1,flexShrink:0}}>FILTER BY</span>
+                  <button onClick={()=>setBoardFilter(null)}
+                    style={{...btn(boardFilter===null?"#7c3aed":"rgba(255,255,255,0.06)",boardFilter===null?"white":"#64748b",{padding:"4px 12px",fontSize:11,borderRadius:20})}}>
+                    All
+                  </button>
+                  {participants.map(p=>(
+                    <button key={p.id} onClick={()=>setBoardFilter(boardFilter===p.display_name?null:p.display_name)}
+                      style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:20,border:`1px solid ${boardFilter===p.display_name?(p.color||"#7c3aed"):"rgba(255,255,255,0.1)"}`,background:boardFilter===p.display_name?`${p.color||"#7c3aed"}22`:"rgba(255,255,255,0.04)",cursor:"pointer",transition:"all 0.18s"}}>
+                      <div style={{width:16,height:16,borderRadius:"50%",background:p.color||"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:7,color:"white",flexShrink:0}}>
+                        {p.display_name?.slice(0,2).toUpperCase()}
+                      </div>
+                      <span style={{fontFamily:"DM Sans",fontSize:11,color:boardFilter===p.display_name?(p.color||"#a78bfa"):"#94a3b8"}}>{p.display_name}</span>
+                      {p.role==="host"&&<span style={{fontFamily:"Syne",fontSize:8,color:"#7c3aed"}}>HOST</span>}
+                      <span style={{width:5,height:5,borderRadius:"50%",background:p.online?"#06d6a0":"#334155",boxShadow:p.online?"0 0 4px #06d6a0":"none"}}/>
+                    </button>
+                  ))}
+                  {boardFilter&&<span style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginLeft:4}}>— showing {boardFilter}'s cards</span>}
+                </div>
               </div>
             )}
 
@@ -2675,7 +2890,15 @@ export default function SprintVibe() {
               </div>
             )}
             <div style={{display:"flex",gap:12,minWidth:820,margin:"0 auto",width:"fit-content"}}>
-              {COLUMNS.map(col=><DropColumn key={col.id} id={col.id} title={col.title} color={col.color} stories={stories[col.id]||[]} onDrop={drop} onAdd={addStory} onDelete={removeStory}/>)}
+              {COLUMNS.map(col=>{
+                const colTitle = customColTitles[col.id] || col.title;
+                const colStories = boardFilter
+                  ? (stories[col.id]||[]).filter(s=>s.assignee===boardFilter)
+                  : (stories[col.id]||[]);
+                return <DropColumn key={col.id} id={col.id} title={colTitle} color={col.color}
+                  stories={colStories} onDrop={drop} onAdd={addStory} onDelete={removeStory}
+                  onRenameCol={handleRenameCol} participants={participants}/>;
+              })}
             </div>
           </div>
         )}
