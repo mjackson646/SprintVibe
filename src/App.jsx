@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { QRCodeSVG } from "qrcode.react";
 import { supabase, createRoom, findRoom, joinRoom, leaveRoom,
          castPokerVote, revealPokerVotes, getPokerVotes,
          addRetroNote, voteRetroNote, getRetroNotes,
@@ -64,10 +63,21 @@ const inp = (ex={}) => ({
 // ─────────────────────────────────────────────────────────────
 //  QR CODE SVG
 // ─────────────────────────────────────────────────────────────
-// Real scannable QR code using qrcode.react
-const QRCode = ({ value, size=140 }) => (
-  <QRCodeSVG value={value} size={size} bgColor="white" fgColor="#0d0d1c" level="M" style={{display:"block",borderRadius:6}}/>
-);
+// ─────────────────────────────────────────────────────────────
+//  REAL QR CODE — generated via free API, scannable on any phone
+// ─────────────────────────────────────────────────────────────
+const QRCode = ({ value, size=150 }) => {
+  const url = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}&margin=10&bgcolor=ffffff&color=0d0d1c`;
+  return (
+    <img
+      src={url}
+      width={size}
+      height={size}
+      alt="Scan to join"
+      style={{ display:"block", borderRadius:8 }}
+    />
+  );
+};
 
 // ─────────────────────────────────────────────────────────────
 //  COUNTDOWN RING
