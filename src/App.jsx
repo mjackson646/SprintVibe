@@ -549,19 +549,35 @@ const Onboarding = ({ onEnter }) => {
 
   const handleAuth = async (isSignUp) => {
     if (!email.trim()||!password.trim()) { setError("Please fill in all fields"); return; }
+    if (isSignUp && !name.trim()) { setError("Please enter your name"); return; }
+    if (isSignUp && password.length < 6) { setError("Password must be at least 6 characters"); return; }
     setLoading(true); setError("");
     try {
       const { data, error:authErr } = isSignUp
         ? await signUp(email, password, name||email.split("@")[0])
         : await signIn(email, password);
       if (authErr) throw authErr;
+      if (isSignUp && !data.user?.confirmed_at) {
+        setError("✓ Account created! Check your email to confirm before signing in.");
+        setLoading(false); return;
+      }
       const user = data.user;
-      const displayName = user.user_metadata?.display_name || email.split("@")[0];
+      const displayName = user.user_metadata?.display_name || name || email.split("@")[0];
       const color = COLORS[Math.floor(Math.random()*COLORS.length)];
       const room = await createRoom("board", user.id);
       await joinRoom(room.id, user.id, displayName, "host");
       onEnter({ userId:user.id, displayName, color, room, role:"host", user });
     } catch(e) { setError(e.message||"Authentication failed"); }
+    finally { setLoading(false); }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) { setError("Enter your email address first, then click Forgot Password"); return; }
+    setLoading(true); setError("");
+    try {
+      await supabase.auth.resetPasswordForEmail(email, { redirectTo: "https://sprintvibe.io" });
+      setError("✓ Password reset email sent! Check your inbox.");
+    } catch(e) { setError("Could not send reset email. Check your email address."); }
     finally { setLoading(false); }
   };
 
@@ -577,7 +593,6 @@ const Onboarding = ({ onEnter }) => {
           Sprint planning, poker &amp; retrospectives<br/>for every team — from solo to corporate
         </div>
       </div>
-
       <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:24}}>
         <button onClick={()=>setMode("create")} style={btn("#7c3aed","white",{padding:"16px",fontSize:15,borderRadius:14})}>
           🚀 Create a new room
@@ -585,11 +600,13 @@ const Onboarding = ({ onEnter }) => {
         <button onClick={()=>setMode("join")} style={btn("rgba(255,255,255,0.06)","white",{padding:"16px",fontSize:15,borderRadius:14,border:"1px solid rgba(255,255,255,0.1)"})}>
           🔗 Join with a room code
         </button>
-        <button onClick={()=>setMode("login")} style={btn("rgba(255,255,255,0.03)","#64748b",{padding:"16px",fontSize:15,borderRadius:14,border:"1px solid rgba(255,255,255,0.06)"})}>
-          🔐 Sign in / Create account
+        <button onClick={()=>setMode("signup")} style={btn("rgba(255,255,255,0.06)","white",{padding:"16px",fontSize:15,borderRadius:14,border:"1px solid rgba(255,255,255,0.1)"})}>
+          ✨ Create an account
+        </button>
+        <button onClick={()=>setMode("login")} style={btn("rgba(255,255,255,0.03)","#64748b",{padding:"14px",fontSize:14,borderRadius:14,border:"1px solid rgba(255,255,255,0.06)"})}>
+          🔐 Sign in to existing account
         </button>
       </div>
-
       <div style={{textAlign:"center",fontFamily:"DM Sans",fontSize:12,color:"#334155"}}>
         No account needed to create or join a room
       </div>
@@ -599,8 +616,6 @@ const Onboarding = ({ onEnter }) => {
   if (mode==="create"||mode==="join") return(
     <div style={S}>
       {!urlCode && <button onClick={()=>setMode("welcome")} style={btn("rgba(255,255,255,0.06)","#64748b",{marginBottom:24})}>← Back</button>}
-
-      {/* Special header when joining via QR */}
       {mode==="join" && urlCode ? (
         <div style={{textAlign:"center",marginBottom:24}}>
           <div style={{fontSize:40,marginBottom:10}}>👋</div>
@@ -613,15 +628,10 @@ const Onboarding = ({ onEnter }) => {
         </div>
       ) : (
         <>
-          <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:6}}>
-            {mode==="create"?"Create a Room":"Join a Room"}
-          </div>
-          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b",marginBottom:24}}>
-            {mode==="create"?"You'll be the host — share the room code with your team":"Enter the room code your host shared with you"}
-          </div>
+          <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:6}}>{mode==="create"?"Create a Room":"Join a Room"}</div>
+          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b",marginBottom:24}}>{mode==="create"?"You'll be the host — share the room code with your team":"Enter the room code your host shared with you"}</div>
         </>
       )}
-
       <div style={{marginBottom:14}}>
         <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:6}}>Your name</div>
         <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Alex" style={inp()} autoFocus/>
@@ -630,17 +640,13 @@ const Onboarding = ({ onEnter }) => {
         <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:6}}>Email <span style={{color:"#334155"}}>(optional — for retro recaps)</span></div>
         <input value={guestEmail} onChange={e=>setGuestEmail(e.target.value)} placeholder="you@example.com" type="email" style={inp()}/>
       </div>
-
-      {/* Only show room code input if NOT coming from QR */}
       {mode==="join" && !urlCode && (
         <div style={{marginBottom:14}}>
           <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:6}}>Room code</div>
           <input value={roomCode} onChange={e=>setRoomCode(e.target.value.toUpperCase())} placeholder="e.g. BOARD-7X9P" style={inp({fontFamily:"Syne",letterSpacing:2,fontSize:15})}/>
         </div>
       )}
-
       {error&&<div style={{background:"rgba(255,77,109,0.1)",border:"1px solid rgba(255,77,109,0.2)",borderRadius:9,padding:"9px 12px",marginBottom:14,fontFamily:"DM Sans",fontSize:13,color:"#ff4d6d"}}>{error}</div>}
-
       <button onClick={()=>handleGuest(mode)} disabled={loading}
         style={btn("#7c3aed","white",{width:"100%",padding:"14px",fontSize:14,opacity:loading?0.6:1})}>
         {loading?"Joining…":mode==="create"?"Create Room & Enter →":"Join Room →"}
@@ -648,42 +654,86 @@ const Onboarding = ({ onEnter }) => {
     </div>
   );
 
-  if (mode==="login") return(
+  // ── SIGN UP (new — more detailed) ──
+  if (mode==="signup") return(
     <div style={S}>
       <button onClick={()=>setMode("welcome")} style={btn("rgba(255,255,255,0.06)","#64748b",{marginBottom:24})}>← Back</button>
-      <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:6}}>Sign In</div>
-      <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b",marginBottom:24}}>Save your rooms and access them from any device</div>
+      <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:4}}>Create Account</div>
+      <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b",marginBottom:24}}>Save your rooms, access from any device, get email recaps</div>
 
       <button onClick={()=>signInWithGoogle()} style={btn("rgba(255,255,255,0.07)","white",{width:"100%",padding:"13px",fontSize:13,marginBottom:16,border:"1px solid rgba(255,255,255,0.1)"})}>
         🌐 Continue with Google
       </button>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+        <div style={{flex:1,height:1,background:"rgba(255,255,255,0.06)"}}/>
+        <span style={{fontFamily:"DM Sans",fontSize:12,color:"#334155"}}>or create with email</span>
+        <div style={{flex:1,height:1,background:"rgba(255,255,255,0.06)"}}/>
+      </div>
 
+      {[
+        { label:"Full name", key:"name", type:"text", placeholder:"Alex Johnson" },
+        { label:"Email address", key:"email", type:"email", placeholder:"you@company.com" },
+        { label:"Password", key:"password", type:"password", placeholder:"At least 6 characters" },
+      ].map(f=>(
+        <div key={f.key} style={{marginBottom:12}}>
+          <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:5}}>{f.label}</div>
+          <input type={f.type}
+            value={f.key==="name"?name:f.key==="email"?email:password}
+            onChange={e=>f.key==="name"?setName(e.target.value):f.key==="email"?setEmail(e.target.value):setPassword(e.target.value)}
+            placeholder={f.placeholder} style={inp()}/>
+        </div>
+      ))}
+
+      {error&&<div style={{background:error.startsWith("✓")?"rgba(6,214,160,0.08)":"rgba(255,77,109,0.1)",border:`1px solid ${error.startsWith("✓")?"rgba(6,214,160,0.2)":"rgba(255,77,109,0.2)"}`,borderRadius:9,padding:"9px 12px",marginBottom:14,fontFamily:"DM Sans",fontSize:13,color:error.startsWith("✓")?"#06d6a0":"#ff4d6d"}}>{error}</div>}
+
+      <button onClick={()=>handleAuth(true)} disabled={loading}
+        style={btn("#7c3aed","white",{width:"100%",padding:"14px",fontSize:14,marginBottom:12,opacity:loading?0.6:1})}>
+        {loading?"Creating account…":"Create Account →"}
+      </button>
+      <div style={{textAlign:"center",fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>
+        Already have an account? <span onClick={()=>setMode("login")} style={{color:"#7c3aed",cursor:"pointer"}}>Sign in</span>
+      </div>
+    </div>
+  );
+
+  // ── SIGN IN ──
+  if (mode==="login") return(
+    <div style={S}>
+      <button onClick={()=>setMode("welcome")} style={btn("rgba(255,255,255,0.06)","#64748b",{marginBottom:24})}>← Back</button>
+      <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:4}}>Sign In</div>
+      <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b",marginBottom:24}}>Welcome back to SprintVibe</div>
+
+      <button onClick={()=>signInWithGoogle()} style={btn("rgba(255,255,255,0.07)","white",{width:"100%",padding:"13px",fontSize:13,marginBottom:16,border:"1px solid rgba(255,255,255,0.1)"})}>
+        🌐 Continue with Google
+      </button>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
         <div style={{flex:1,height:1,background:"rgba(255,255,255,0.06)"}}/>
         <span style={{fontFamily:"DM Sans",fontSize:12,color:"#334155"}}>or email</span>
         <div style={{flex:1,height:1,background:"rgba(255,255,255,0.06)"}}/>
       </div>
 
-      {["Email","Password"].map(f=>(
-        <div key={f} style={{marginBottom:12}}>
-          <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:5}}>{f}</div>
-          <input type={f==="Password"?"password":"email"}
-            value={f==="Email"?email:password}
-            onChange={e=>f==="Email"?setEmail(e.target.value):setPassword(e.target.value)}
-            placeholder={f==="Email"?"you@example.com":"••••••••"}
-            style={inp()}/>
-        </div>
-      ))}
+      <div style={{marginBottom:12}}>
+        <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:5}}>Email</div>
+        <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com" style={inp()}/>
+      </div>
+      <div style={{marginBottom:8}}>
+        <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:5}}>Password</div>
+        <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" style={inp()}/>
+      </div>
 
-      {error&&<div style={{background:"rgba(255,77,109,0.1)",border:"1px solid rgba(255,77,109,0.2)",borderRadius:9,padding:"9px 12px",marginBottom:14,fontFamily:"DM Sans",fontSize:13,color:"#ff4d6d"}}>{error}</div>}
+      {/* Forgot password */}
+      <div style={{textAlign:"right",marginBottom:14}}>
+        <span onClick={handleForgotPassword} style={{fontFamily:"DM Sans",fontSize:12,color:"#7c3aed",cursor:"pointer"}}>Forgot password?</span>
+      </div>
 
-      <div style={{display:"flex",gap:10,marginTop:4}}>
-        <button onClick={()=>handleAuth(false)} disabled={loading} style={btn("#7c3aed","white",{flex:1,padding:"12px"})}>
-          {loading?"…":"Sign In"}
-        </button>
-        <button onClick={()=>handleAuth(true)} disabled={loading} style={btn("rgba(255,255,255,0.06)","#94a3b8",{flex:1,padding:"12px"})}>
-          {loading?"…":"Sign Up"}
-        </button>
+      {error&&<div style={{background:error.startsWith("✓")?"rgba(6,214,160,0.08)":"rgba(255,77,109,0.1)",border:`1px solid ${error.startsWith("✓")?"rgba(6,214,160,0.2)":"rgba(255,77,109,0.2)"}`,borderRadius:9,padding:"9px 12px",marginBottom:14,fontFamily:"DM Sans",fontSize:13,color:error.startsWith("✓")?"#06d6a0":"#ff4d6d"}}>{error}</div>}
+
+      <button onClick={()=>handleAuth(false)} disabled={loading}
+        style={btn("#7c3aed","white",{width:"100%",padding:"14px",fontSize:14,marginBottom:12,opacity:loading?0.6:1})}>
+        {loading?"Signing in…":"Sign In →"}
+      </button>
+      <div style={{textAlign:"center",fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>
+        No account yet? <span onClick={()=>setMode("signup")} style={{color:"#7c3aed",cursor:"pointer"}}>Create one free</span>
       </div>
     </div>
   );
@@ -1569,98 +1619,180 @@ const StripeModal = ({ onClose }) => {
     </div>
   );
 };
-const SettingsView = ({ session, roomUrl, participants, onShowPricing, pushPermission, onEnableNotifications }) => {
-  const [copied, setCopied] = useState(false);
-  const copy = (text) => { navigator.clipboard?.writeText(text).catch(()=>{}); setCopied(true); setTimeout(()=>setCopied(false),2000); };
-  const ROLE_COLOR = { host:"#7c3aed", participant:"#06d6a0" };
+const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifications, onDisableNotifications, onSignOut }) => {
+  const [activeTab, setActiveTab] = useState("account");
+  const [displayName, setDisplayName] = useState(session?.displayName || "");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
+  const [notifEnabled, setNotifEnabled] = useState(pushPermission === "granted");
+
+  const isGuest = session?.userId?.startsWith("guest_");
+
+  const saveDisplayName = async () => {
+    if (!displayName.trim()) return;
+    setSaving(true);
+    try {
+      if (session?.user) {
+        await supabase.auth.updateUser({ data: { display_name: displayName.trim() } });
+      }
+      setSaveMsg("✓ Name updated!");
+      setTimeout(() => setSaveMsg(""), 3000);
+    } catch(e) { setSaveMsg("Failed to update name"); }
+    finally { setSaving(false); }
+  };
+
+  const savePassword = async () => {
+    if (!newPassword || newPassword !== confirmPassword) { setSaveMsg("Passwords don't match"); return; }
+    if (newPassword.length < 6) { setSaveMsg("Password must be at least 6 characters"); return; }
+    setSaving(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setNewPassword(""); setConfirmPassword(""); setCurrentPassword("");
+      setSaveMsg("✓ Password updated!");
+      setTimeout(() => setSaveMsg(""), 3000);
+    } catch(e) { setSaveMsg(e.message || "Failed to update password"); }
+    finally { setSaving(false); }
+  };
+
+  const TABS = ["account","notifications","subscription"];
 
   return(
-    <div style={{padding:"20px 16px 48px",maxWidth:600,margin:"0 auto"}}>
-      <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:4}}>Settings ⚙️</div>
-      <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569",marginBottom:24}}>Room details and team</div>
+    <div style={{padding:"20px 16px 48px",maxWidth:540,margin:"0 auto"}}>
+      <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:20}}>Settings ⚙️</div>
 
-      {/* ── Who's in the room ── */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
-        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>
-          WHO'S IN THE ROOM ({participants.length})
-        </div>
-        {participants.length===0&&(
-          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#334155",textAlign:"center",padding:"12px 0"}}>No one else has joined yet — share the room code!</div>
-        )}
-        {participants.map(p=>(
-          <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:11}}>
-            <div style={{width:36,height:36,borderRadius:"50%",background:p.color||"#7c3aed",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:11,color:"white",flexShrink:0}}>
-              {p.avatar||p.display_name?.slice(0,2).toUpperCase()}
-            </div>
-            <div style={{flex:1}}>
-              <div style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",fontWeight:500}}>
-                {p.display_name}
-                {p.user_id===session.userId&&<span style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginLeft:6}}>(you)</span>}
-              </div>
-              <span style={{fontFamily:"Syne",fontSize:9,fontWeight:700,color:ROLE_COLOR[p.role]||"#64748b",background:`${ROLE_COLOR[p.role]||"#64748b"}22`,borderRadius:4,padding:"1px 6px",textTransform:"uppercase",letterSpacing:1}}>{p.role}</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:5}}>
-              <span style={{width:7,height:7,borderRadius:"50%",background:p.online?"#06d6a0":"#334155",boxShadow:p.online?"0 0 6px #06d6a0":"none"}}/>
-              <span style={{fontFamily:"DM Sans",fontSize:11,color:p.online?"#06d6a0":"#334155"}}>{p.online?"Online":"Away"}</span>
-            </div>
-          </div>
+      {/* Tab bar */}
+      <div style={{display:"flex",gap:4,marginBottom:24,background:"rgba(255,255,255,0.03)",borderRadius:12,padding:4}}>
+        {TABS.map(t=>(
+          <button key={t} onClick={()=>setActiveTab(t)}
+            style={{flex:1,padding:"8px",borderRadius:9,border:"none",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:11,textTransform:"capitalize",letterSpacing:0.5,background:activeTab===t?"rgba(124,58,237,0.25)":"transparent",color:activeTab===t?"#a78bfa":"#475569",transition:"all 0.2s"}}>
+            {t==="account"?"👤 Account":t==="notifications"?"🔔 Notifications":"💎 Subscription"}
+          </button>
         ))}
       </div>
 
-      {/* ── Room info ── */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
-        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>ROOM INFO</div>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:"10px 14px",background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:11}}>
-          <div>
-            <div style={{fontFamily:"DM Sans",fontSize:10,color:"#64748b",marginBottom:3}}>ROOM CODE</div>
-            <div style={{fontFamily:"Syne",fontSize:18,fontWeight:800,color:"#a78bfa",letterSpacing:3}}>{session.room?.code}</div>
-          </div>
-          <button onClick={()=>copy(session.room?.code)} style={btn("rgba(124,58,237,0.3)","#a78bfa",{fontSize:11,padding:"6px 12px"})}>Copy</button>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:11}}>
-          <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",flex:1,wordBreak:"break-all"}}>{roomUrl}</div>
-          <button onClick={()=>copy(roomUrl)} style={btn(copied?"#06d6a0":"rgba(255,255,255,0.08)",copied?"#0d0d1c":"#94a3b8",{padding:"6px 12px",fontSize:11,flexShrink:0})}>{copied?"✓ Copied":"Copy Link"}</button>
-        </div>
-      </div>
+      {/* ── ACCOUNT TAB ── */}
+      {activeTab==="account"&&(
+        <div>
+          {isGuest ? (
+            <div style={{background:"rgba(255,213,0,0.06)",border:"1px solid rgba(255,213,0,0.15)",borderRadius:14,padding:20,textAlign:"center",marginBottom:16}}>
+              <div style={{fontSize:28,marginBottom:8}}>👤</div>
+              <div style={{fontFamily:"Syne",fontSize:14,fontWeight:700,color:"white",marginBottom:6}}>You're a guest</div>
+              <div style={{fontFamily:"DM Sans",fontSize:13,color:"#64748b",marginBottom:16}}>Create an account to save your profile, access rooms from any device and never lose your data.</div>
+              <button onClick={()=>{}} style={btn("#7c3aed","white",{width:"100%",padding:"12px",fontSize:13})}>Create Account →</button>
+            </div>
+          ) : (
+            <>
+              {/* Display name */}
+              <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:18,marginBottom:14}}>
+                <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>DISPLAY NAME</div>
+                <input value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="Your name" style={{...inp(),marginBottom:10}}/>
+                <button onClick={saveDisplayName} disabled={saving} style={btn("#7c3aed","white",{padding:"9px 20px",fontSize:12})}>{saving?"Saving…":"Save Name"}</button>
+              </div>
 
-      {/* ── Push Notifications ── */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
-        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>NOTIFICATIONS</div>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:40,height:40,borderRadius:12,background:pushPermission==="granted"?"rgba(6,214,160,0.15)":"rgba(255,255,255,0.05)",border:`1px solid ${pushPermission==="granted"?"rgba(6,214,160,0.3)":"rgba(255,255,255,0.1)"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>
-            {pushPermission==="granted"?"🔔":"🔕"}
-          </div>
-          <div style={{flex:1}}>
-            <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"white",marginBottom:2}}>
-              {pushPermission==="granted"?"Notifications enabled":"Notifications disabled"}
-            </div>
-            <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569"}}>
-              {pushPermission==="granted"
-                ? "You'll be alerted when sessions start or teammates join"
-                : "Enable to get alerts when sessions start or teammates join"}
-            </div>
-          </div>
-          {pushPermission!=="granted"&&(
-            <button onClick={onEnableNotifications}
-              style={btn("#7c3aed","white",{padding:"7px 14px",fontSize:12,flexShrink:0})}>
-              Enable
-            </button>
+              {/* Email */}
+              <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:18,marginBottom:14}}>
+                <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:10}}>EMAIL ADDRESS</div>
+                <div style={{fontFamily:"DM Mono",fontSize:13,color:"#94a3b8",background:"rgba(255,255,255,0.04)",borderRadius:9,padding:"10px 12px"}}>{session?.user?.email || "—"}</div>
+              </div>
+
+              {/* Change password */}
+              <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:18,marginBottom:14}}>
+                <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>CHANGE PASSWORD</div>
+                <input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} placeholder="New password" style={{...inp(),marginBottom:8}}/>
+                <input type="password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} placeholder="Confirm new password" style={{...inp(),marginBottom:10}}/>
+                <button onClick={savePassword} disabled={saving} style={btn("#7c3aed","white",{padding:"9px 20px",fontSize:12})}>{saving?"Saving…":"Update Password"}</button>
+              </div>
+            </>
           )}
-        </div>
-      </div>
 
-      {/* ── Subscription ── */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18}}>
-        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>SUBSCRIPTION</div>
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
-          <div style={{width:40,height:40,borderRadius:12,background:"rgba(6,214,160,0.15)",border:"1px solid rgba(6,214,160,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🆓</div>
-          <div>
-            <div style={{fontFamily:"Syne",fontSize:14,fontWeight:700,color:"#06d6a0"}}>Solo Plan — Free</div>
-            <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569"}}>3 projects · 5 AI estimates/mo · QR join</div>
+          {saveMsg&&<div style={{background:"rgba(6,214,160,0.08)",border:"1px solid rgba(6,214,160,0.2)",borderRadius:10,padding:"10px 14px",fontFamily:"DM Sans",fontSize:13,color:"#06d6a0",marginBottom:14}}>{saveMsg}</div>}
+
+          {/* Sign out */}
+          <button onClick={onSignOut} style={btn("rgba(255,77,109,0.1)","#ff4d6d",{width:"100%",padding:"12px",fontSize:13,border:"1px solid rgba(255,77,109,0.2)"})}>
+            Sign Out
+          </button>
+        </div>
+      )}
+
+      {/* ── NOTIFICATIONS TAB ── */}
+      {activeTab==="notifications"&&(
+        <div>
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:18,marginBottom:14}}>
+            <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:16}}>PUSH NOTIFICATIONS</div>
+
+            {/* Toggle row */}
+            <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
+              <div style={{fontSize:24}}>{pushPermission==="granted"?"🔔":"🔕"}</div>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"white",marginBottom:3}}>
+                  {pushPermission==="granted"?"Notifications On":"Notifications Off"}
+                </div>
+                <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569"}}>
+                  {pushPermission==="granted"
+                    ?"You'll be alerted when sessions start or teammates join"
+                    :"Enable to get browser alerts for session activity"}
+                </div>
+              </div>
+              {/* Toggle switch */}
+              <div onClick={pushPermission==="granted"?onDisableNotifications:onEnableNotifications}
+                style={{width:48,height:26,borderRadius:13,background:pushPermission==="granted"?"#7c3aed":"rgba(255,255,255,0.1)",cursor:"pointer",position:"relative",transition:"all 0.25s",flexShrink:0}}>
+                <div style={{width:20,height:20,borderRadius:"50%",background:"white",position:"absolute",top:3,left:pushPermission==="granted"?25:3,transition:"left 0.25s",boxShadow:"0 2px 6px rgba(0,0,0,0.3)"}}/>
+              </div>
+            </div>
+
+            {/* Notification types */}
+            {[
+              { label:"Session started", desc:"When host starts Poker or Retro", icon:"🎯" },
+              { label:"Teammate joins", desc:"When someone joins your room", icon:"👋" },
+            ].map(n=>(
+              <div key={n.label} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:10,marginBottom:8}}>
+                <span style={{fontSize:16}}>{n.icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0"}}>{n.label}</div>
+                  <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569"}}>{n.desc}</div>
+                </div>
+                <div style={{width:8,height:8,borderRadius:"50%",background:pushPermission==="granted"?"#06d6a0":"#334155",boxShadow:pushPermission==="granted"?"0 0 6px #06d6a0":"none"}}/>
+              </div>
+            ))}
+
+            {pushPermission==="denied"&&(
+              <div style={{background:"rgba(255,77,109,0.08)",border:"1px solid rgba(255,77,109,0.2)",borderRadius:10,padding:"10px 14px",marginTop:12,fontFamily:"DM Sans",fontSize:12,color:"#ff4d6d"}}>
+                ⚠️ Notifications are blocked in your browser. To enable: click the 🔒 lock icon in your address bar → Notifications → Allow.
+              </div>
+            )}
           </div>
         </div>
-        <button onClick={onShowPricing} style={btn("#7c3aed","white",{width:"100%",padding:"12px",fontSize:13})}>💎 Upgrade Plan</button>
-      </div>
+      )}
+
+      {/* ── SUBSCRIPTION TAB ── */}
+      {activeTab==="subscription"&&(
+        <div>
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:18,marginBottom:14}}>
+            <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>CURRENT PLAN</div>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+              <div style={{width:44,height:44,borderRadius:13,background:"rgba(6,214,160,0.15)",border:"1px solid rgba(6,214,160,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>🆓</div>
+              <div>
+                <div style={{fontFamily:"Syne",fontSize:15,fontWeight:700,color:"#06d6a0"}}>Solo Plan — Free</div>
+                <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569"}}>3 projects · 5 AI estimates/mo · QR join</div>
+              </div>
+            </div>
+            <button onClick={onShowPricing} style={btn("#7c3aed","white",{width:"100%",padding:"13px",fontSize:14})}>💎 Upgrade Plan</button>
+          </div>
+
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:18}}>
+            <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>WHAT YOU GET WITH PRO</div>
+            {["Unlimited projects & rooms","Unlimited AI coach estimates","Notion, Jira & Linear export","Slack integration","Custom room branding","Priority support"].map(f=>(
+              <div key={f} style={{display:"flex",gap:10,marginBottom:8,fontFamily:"DM Sans",fontSize:13,color:"#94a3b8"}}>
+                <span style={{color:"#7c3aed",flexShrink:0}}>✓</span>{f}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1673,13 +1805,35 @@ export default function SprintVibe() {
   const [toast, setToast]       = useState(null);
   const [participants, setParticipants] = useState([]);
   const [workspace, setWorkspace] = useState(null);
-  const [screen, setScreen]     = useState("landing"); // landing | onboarding | workspace | app
+  const [screen, setScreen]     = useState("landing");
   const { permission, requestPermission, notify } = usePushNotifications();
 
-  // Check for ?join= on load — skip landing if joining via QR
+  // ── Session persistence — restore on refresh ─────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("join")) setScreen("onboarding");
+    if (params.get("join")) { setScreen("onboarding"); return; }
+
+    // Try to restore session from localStorage
+    try {
+      const saved = localStorage.getItem("sprintvibe_session");
+      if (saved) {
+        const sess = JSON.parse(saved);
+        // Verify room still exists before restoring
+        if (sess?.room?.id && sess?.userId) {
+          setSession(sess);
+          setScreen("app");
+          return;
+        }
+      }
+    } catch(e) {}
+
+    // Check Supabase auth session
+    supabase.auth.getSession().then(({ data: { session: authSess } }) => {
+      if (authSess?.user) {
+        // Authenticated user — go to onboarding to pick/create room
+        setScreen("onboarding");
+      }
+    });
   }, []);
 
   const roomUrl = session
@@ -1691,13 +1845,16 @@ export default function SprintVibe() {
     setTab("board");
     setScreen("app");
     requestPermission();
+    // Save session to localStorage for refresh persistence
+    try { localStorage.setItem("sprintvibe_session", JSON.stringify(sess)); } catch(e) {}
   };
 
   const handleLeave = async () => {
-    if (session) await leaveRoom(session.room.id, session.userId);
+    if (session) await leaveRoom(session.room.id, session.userId).catch(()=>{});
     setSession(null);
     setStories({ backlog:[], sprint:[], in_progress:[], done:[] });
     setScreen("landing");
+    try { localStorage.removeItem("sprintvibe_session"); } catch(e) {}
   };
 
   // ── Story handlers — all synced to Supabase ──────────────
@@ -1951,7 +2108,14 @@ export default function SprintVibe() {
         {tab==="poker"     &&<PokerSession  stories={stories} session={session} roomUrl={roomUrl}/>}
         {tab==="retro"     &&<RetroView     session={session} roomUrl={roomUrl}/>}
         {tab==="analytics" &&<AnalyticsView stories={stories} session={session}/>}
-        {tab==="settings"  &&<SettingsView  session={session} roomUrl={roomUrl} participants={participants} onShowPricing={()=>setModal("stripe")} pushPermission={permission} onEnableNotifications={requestPermission}/>}
+        {tab==="settings"  &&<SettingsView
+          session={session}
+          onShowPricing={()=>setModal("stripe")}
+          pushPermission={permission}
+          onEnableNotifications={requestPermission}
+          onDisableNotifications={()=>{}}
+          onSignOut={handleLeave}
+        />}
 
         {/* Modals */}
         {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/> }
