@@ -43,16 +43,25 @@ const LandingPage = ({ onGetStarted, onJoin, onSignIn }) => {
     <div style={{minHeight:"100vh",background:"#08080f",color:"white",fontFamily:"DM Sans",overflowX:"hidden"}}>
 
       {/* ── NAV ── */}
-      <nav style={{padding:"16px 32px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.06)",position:"sticky",top:0,background:"rgba(8,8,15,0.9)",backdropFilter:"blur(16px)",zIndex:100}}>
-        <div style={{fontFamily:"Syne",fontWeight:800,fontSize:22,letterSpacing:-0.5}}>
+      <nav style={{padding:"14px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.06)",position:"sticky",top:0,background:"rgba(8,8,15,0.92)",backdropFilter:"blur(16px)",zIndex:100}}>
+        <div style={{fontFamily:"Syne",fontWeight:800,fontSize:20,letterSpacing:-0.5}}>
           Sprint<span style={{color:"#7c3aed"}}>Vibe</span>
         </div>
-        <div style={{display:"flex",gap:12,alignItems:"center"}}>
-          <button onClick={onSignIn} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 16px",color:"#94a3b8",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13}}>Sign In</button>
-          <button onClick={onJoin} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 16px",color:"#94a3b8",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13}}>Join a Room</button>
-          <button onClick={onGetStarted} style={{background:"#7c3aed",border:"none",borderRadius:10,padding:"8px 18px",color:"white",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13}}>Get Started Free →</button>
+        {/* Desktop nav — hidden on small screens via flex wrapping */}
+        <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+          <button onClick={onSignIn} style={{background:"none",border:"none",color:"#64748b",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13,padding:"8px 12px",whiteSpace:"nowrap"}}>Sign In</button>
+          <button onClick={onJoin} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"7px 14px",color:"#94a3b8",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13,whiteSpace:"nowrap",display:"none"}}
+            className="desktop-only">Join a Room</button>
+          <button onClick={onGetStarted} style={{background:"#7c3aed",border:"none",borderRadius:10,padding:"8px 16px",color:"white",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>Get Started →</button>
         </div>
       </nav>
+
+      {/* Mobile nav strip — shows below hero on small screens */}
+      <div style={{display:"flex",gap:8,padding:"12px 20px",borderBottom:"1px solid rgba(255,255,255,0.05)",overflowX:"auto",scrollbarWidth:"none"}}>
+        <button onClick={onGetStarted} style={{background:"#7c3aed",border:"none",borderRadius:10,padding:"10px 18px",color:"white",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13,whiteSpace:"nowrap",flexShrink:0}}>🚀 Start Free</button>
+        <button onClick={onJoin} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"10px 16px",color:"#94a3b8",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13,whiteSpace:"nowrap",flexShrink:0}}>🔗 Join Room</button>
+        <button onClick={onSignIn} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"10px 16px",color:"#94a3b8",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13,whiteSpace:"nowrap",flexShrink:0}}>🔐 Sign In</button>
+      </div>
 
       {/* ── HERO ── */}
       <div style={{textAlign:"center",padding:"80px 24px 60px",position:"relative",overflow:"hidden"}}>
