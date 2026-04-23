@@ -21,6 +21,162 @@ const FontLoader = () => {
 };
 
 // ─────────────────────────────────────────────────────────────
+//  LANDING PAGE — bold & energetic
+// ─────────────────────────────────────────────────────────────
+const LandingPage = ({ onGetStarted, onJoin }) => {
+  const [hovered, setHovered] = useState(null);
+  const FEATURES = [
+    { icon:"🃏", title:"Planning Poker", desc:"Real-time card voting. Everyone reveals at once — no anchoring bias." },
+    { icon:"🏁", title:"Retrospectives", desc:"Structured retros with collect, vote & discuss phases. AI coach included." },
+    { icon:"📋", title:"Kanban Board", desc:"Drag-and-drop sprint board. Stories persist between sessions." },
+    { icon:"📱", title:"Scan to Join", desc:"Share a QR code. Teammates join instantly — no account needed." },
+    { icon:"✨", title:"AI Coach", desc:"Get an AI-generated sprint summary and action items after every retro." },
+    { icon:"📊", title:"Analytics", desc:"Track velocity, completion rates and priority breakdown in real time." },
+  ];
+  const STATS = [
+    { n:"10k+", l:"Sessions run" },
+    { n:"50k+", l:"Story points estimated" },
+    { n:"98%",  l:"Teams come back" },
+    { n:"< 30s", l:"Time to start" },
+  ];
+  return (
+    <div style={{minHeight:"100vh",background:"#08080f",color:"white",fontFamily:"DM Sans",overflowX:"hidden"}}>
+
+      {/* ── NAV ── */}
+      <nav style={{padding:"16px 32px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.06)",position:"sticky",top:0,background:"rgba(8,8,15,0.9)",backdropFilter:"blur(16px)",zIndex:100}}>
+        <div style={{fontFamily:"Syne",fontWeight:800,fontSize:22,letterSpacing:-0.5}}>
+          Sprint<span style={{color:"#7c3aed"}}>Vibe</span>
+        </div>
+        <div style={{display:"flex",gap:12,alignItems:"center"}}>
+          <button onClick={onJoin} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 16px",color:"#94a3b8",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13}}>Join a Room</button>
+          <button onClick={onGetStarted} style={{background:"#7c3aed",border:"none",borderRadius:10,padding:"8px 18px",color:"white",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13}}>Get Started Free →</button>
+        </div>
+      </nav>
+
+      {/* ── HERO ── */}
+      <div style={{textAlign:"center",padding:"80px 24px 60px",position:"relative",overflow:"hidden"}}>
+        {/* Background glow blobs */}
+        <div style={{position:"absolute",top:-100,left:"50%",transform:"translateX(-50%)",width:600,height:600,background:"radial-gradient(circle,rgba(124,58,237,0.25) 0%,transparent 70%)",pointerEvents:"none"}}/>
+        <div style={{position:"absolute",top:100,left:"10%",width:300,height:300,background:"radial-gradient(circle,rgba(6,214,160,0.1) 0%,transparent 70%)",pointerEvents:"none"}}/>
+        <div style={{position:"absolute",top:50,right:"10%",width:300,height:300,background:"radial-gradient(circle,rgba(255,77,109,0.1) 0%,transparent 70%)",pointerEvents:"none"}}/>
+
+        <div style={{display:"inline-flex",alignItems:"center",gap:8,background:"rgba(124,58,237,0.15)",border:"1px solid rgba(124,58,237,0.35)",borderRadius:20,padding:"6px 16px",marginBottom:24,fontFamily:"Syne",fontSize:12,fontWeight:700,color:"#a78bfa",letterSpacing:1}}>
+          ⚡ THE AGILE TOOL YOUR TEAM WILL ACTUALLY USE
+        </div>
+
+        <h1 style={{fontFamily:"Syne",fontWeight:800,fontSize:"clamp(38px,7vw,80px)",lineHeight:1.05,letterSpacing:-2,marginBottom:20,position:"relative"}}>
+          Sprint planning<br/>
+          <span style={{background:"linear-gradient(135deg,#7c3aed,#a78bfa,#06d6a0)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>your team loves.</span>
+        </h1>
+
+        <p style={{fontSize:"clamp(16px,2.5vw,20px)",color:"#64748b",maxWidth:540,margin:"0 auto 36px",lineHeight:1.7}}>
+          Planning Poker, Retrospectives &amp; Kanban — all in one place. Scan a QR code and your whole team is in within seconds.
+        </p>
+
+        <div style={{display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap",marginBottom:20}}>
+          <button onClick={onGetStarted}
+            style={{background:"linear-gradient(135deg,#7c3aed,#5b21b6)",border:"none",borderRadius:14,padding:"15px 32px",color:"white",cursor:"pointer",fontFamily:"Syne",fontWeight:800,fontSize:16,boxShadow:"0 8px 32px rgba(124,58,237,0.4)",transition:"all 0.2s"}}
+            onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+            onMouseLeave={e=>e.currentTarget.style.transform="none"}>
+            🚀 Start Free Session
+          </button>
+          <button onClick={onJoin}
+            style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.15)",borderRadius:14,padding:"15px 28px",color:"white",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:15,transition:"all 0.2s"}}
+            onMouseEnter={e=>e.currentTarget.style.borderColor="#7c3aed"}
+            onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.15)"}>
+            🔗 Join with Room Code
+          </button>
+        </div>
+        <div style={{fontFamily:"DM Sans",fontSize:13,color:"#334155"}}>No credit card · No install · Works on every device</div>
+      </div>
+
+      {/* ── STATS ── */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:1,borderTop:"1px solid rgba(255,255,255,0.06)",borderBottom:"1px solid rgba(255,255,255,0.06)",margin:"0 0 80px"}}>
+        {STATS.map((s,i)=>(
+          <div key={i} style={{padding:"28px 20px",textAlign:"center",borderRight:i<STATS.length-1?"1px solid rgba(255,255,255,0.06)":"none"}}>
+            <div style={{fontFamily:"Syne",fontSize:32,fontWeight:800,color:"#7c3aed",marginBottom:4}}>{s.n}</div>
+            <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── FEATURES ── */}
+      <div style={{padding:"0 24px 80px",maxWidth:1100,margin:"0 auto"}}>
+        <div style={{textAlign:"center",marginBottom:48}}>
+          <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:3,marginBottom:12}}>EVERYTHING YOUR TEAM NEEDS</div>
+          <h2 style={{fontFamily:"Syne",fontWeight:800,fontSize:"clamp(28px,4vw,44px)",letterSpacing:-1,marginBottom:12}}>One tool. Every ceremony.</h2>
+          <p style={{color:"#475569",fontSize:16,maxWidth:440,margin:"0 auto"}}>Stop juggling 5 different tools. SprintVibe does it all.</p>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
+          {FEATURES.map((f,i)=>(
+            <div key={i}
+              onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)}
+              style={{background:hovered===i?"rgba(124,58,237,0.1)":"rgba(255,255,255,0.025)",border:`1px solid ${hovered===i?"rgba(124,58,237,0.35)":"rgba(255,255,255,0.07)"}`,borderRadius:20,padding:"28px 24px",transition:"all 0.2s",cursor:"default"}}>
+              <div style={{fontSize:36,marginBottom:14}}>{f.icon}</div>
+              <h3 style={{fontFamily:"Syne",fontWeight:800,fontSize:18,marginBottom:8,color:"white"}}>{f.title}</h3>
+              <p style={{color:"#64748b",fontSize:14,lineHeight:1.6,margin:0}}>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── HOW IT WORKS ── */}
+      <div style={{background:"rgba(255,255,255,0.02)",borderTop:"1px solid rgba(255,255,255,0.06)",borderBottom:"1px solid rgba(255,255,255,0.06)",padding:"72px 24px",marginBottom:80}}>
+        <div style={{maxWidth:900,margin:"0 auto",textAlign:"center"}}>
+          <div style={{fontFamily:"Syne",fontSize:10,color:"#06d6a0",letterSpacing:3,marginBottom:12}}>HOW IT WORKS</div>
+          <h2 style={{fontFamily:"Syne",fontWeight:800,fontSize:"clamp(26px,4vw,42px)",letterSpacing:-1,marginBottom:48}}>Up and running in 30 seconds</h2>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:32}}>
+            {[
+              { n:"1", t:"Create a room", d:"Pick your session type — board, poker or retro. Get a unique room code instantly.", c:"#7c3aed" },
+              { n:"2", t:"Share the QR", d:"Show the QR code or copy the link. Teammates scan and join on any device.", c:"#06d6a0" },
+              { n:"3", t:"Run your session", d:"Vote, add notes, drag cards. Everything syncs live across everyone's screen.", c:"#ffd166" },
+              { n:"4", t:"Get the recap", d:"AI coach summarises your retro and emails the action items to everyone.", c:"#ff4d6d" },
+            ].map(s=>(
+              <div key={s.n} style={{textAlign:"center"}}>
+                <div style={{width:52,height:52,borderRadius:16,background:`${s.c}22`,border:`2px solid ${s.c}`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px",fontFamily:"Syne",fontWeight:800,fontSize:22,color:s.c}}>{s.n}</div>
+                <h3 style={{fontFamily:"Syne",fontWeight:700,fontSize:16,marginBottom:8,color:"white"}}>{s.t}</h3>
+                <p style={{color:"#475569",fontSize:13,lineHeight:1.6,margin:0}}>{s.d}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── PRICING TEASER ── */}
+      <div style={{padding:"0 24px 80px",maxWidth:700,margin:"0 auto",textAlign:"center"}}>
+        <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:3,marginBottom:12}}>PRICING</div>
+        <h2 style={{fontFamily:"Syne",fontWeight:800,fontSize:"clamp(26px,4vw,42px)",letterSpacing:-1,marginBottom:12}}>Free to start. Scales with you.</h2>
+        <p style={{color:"#475569",fontSize:16,marginBottom:36,lineHeight:1.6}}>Solo plan is free forever. Upgrade when your team grows.</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:32}}>
+          {[
+            { name:"Solo", price:"Free", color:"#06d6a0", features:"3 rooms · Poker · Retro · QR" },
+            { name:"Pro", price:"$7/mo", color:"#7c3aed", hl:true, features:"Unlimited · AI · Integrations" },
+            { name:"Team", price:"$19/mo", color:"#ffd166", features:"20 members · Analytics · Priority" },
+            { name:"Corporate", price:"$49/mo", color:"#ff4d6d", features:"Unlimited · SSO · SLA" },
+          ].map(p=>(
+            <div key={p.name} style={{background:p.hl?"rgba(124,58,237,0.12)":"rgba(255,255,255,0.03)",border:`1.5px solid ${p.hl?"#7c3aed":"rgba(255,255,255,0.07)"}`,borderRadius:16,padding:"18px 14px",textAlign:"center"}}>
+              <div style={{fontFamily:"Syne",fontSize:14,fontWeight:800,color:p.color,marginBottom:4}}>{p.name}</div>
+              <div style={{fontFamily:"Syne",fontSize:18,fontWeight:800,color:"white",marginBottom:6}}>{p.price}</div>
+              <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",lineHeight:1.4}}>{p.features}</div>
+            </div>
+          ))}
+        </div>
+        <button onClick={onGetStarted}
+          style={{background:"linear-gradient(135deg,#7c3aed,#5b21b6)",border:"none",borderRadius:14,padding:"15px 36px",color:"white",cursor:"pointer",fontFamily:"Syne",fontWeight:800,fontSize:16,boxShadow:"0 8px 32px rgba(124,58,237,0.35)"}}>
+          Start for Free →
+        </button>
+      </div>
+
+      {/* ── FOOTER ── */}
+      <div style={{borderTop:"1px solid rgba(255,255,255,0.06)",padding:"28px 32px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+        <div style={{fontFamily:"Syne",fontWeight:800,fontSize:18}}>Sprint<span style={{color:"#7c3aed"}}>Vibe</span></div>
+        <div style={{fontFamily:"DM Sans",fontSize:13,color:"#334155"}}>© 2026 SprintVibe · sprintvibe.io</div>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
 //  CONSTANTS
 // ─────────────────────────────────────────────────────────────
 const POKER_VALUES = ["1","2","3","5","8","13","21","40","?","☕"];
@@ -170,6 +326,195 @@ const QRJoinBanner = ({ roomCode, url, participants=[] }) => {
 // ─────────────────────────────────────────────────────────────
 //  ONBOARDING SCREEN — shown before anything else
 // ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+//  WORKSPACE CREATE
+// ─────────────────────────────────────────────────────────────
+const WorkspaceCreate = ({ session, onCreated, onSkip }) => {
+  const [name, setName] = useState("");
+  const [emails, setEmails] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const create = async () => {
+    if (!name.trim()) { setError("Please enter a workspace name"); return; }
+    setLoading(true); setError("");
+    try {
+      // Create workspace in Supabase
+      const { data: ws, error: wsErr } = await supabase.from("workspaces")
+        .insert({ name: name.trim(), owner_id: session.userId, plan: "free" })
+        .select().single();
+      if (wsErr) throw wsErr;
+
+      // Add owner as member
+      await supabase.from("workspace_members").insert({
+        workspace_id: ws.id, user_id: session.userId,
+        email: session.email || "", role: "owner", status: "active"
+      });
+
+      // Invite teammates by email
+      const emailList = emails.split(/[\s,;]+/).map(e=>e.trim()).filter(e=>e.includes("@"));
+      if (emailList.length > 0) {
+        await supabase.from("workspace_members").insert(
+          emailList.map(email => ({ workspace_id: ws.id, email, role: "member", status: "pending" }))
+        );
+      }
+      onCreated(ws);
+    } catch(e) { setError(e.message || "Something went wrong"); }
+    finally { setLoading(false); }
+  };
+
+  return(
+    <div style={{maxWidth:480,margin:"0 auto",padding:"40px 20px"}}>
+      <div style={{textAlign:"center",marginBottom:32}}>
+        <div style={{fontSize:40,marginBottom:12}}>🏢</div>
+        <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:8}}>Create your workspace</div>
+        <div style={{fontFamily:"DM Sans",fontSize:14,color:"#64748b",lineHeight:1.6}}>A workspace keeps all your team's rooms, boards and retros in one place.</div>
+      </div>
+
+      <div style={{marginBottom:14}}>
+        <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:6}}>Workspace name</div>
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. Acme Engineering Team" style={inp()} autoFocus/>
+      </div>
+
+      <div style={{marginBottom:20}}>
+        <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:6}}>Invite teammates <span style={{color:"#334155"}}>(optional — email addresses, comma separated)</span></div>
+        <textarea value={emails} onChange={e=>setEmails(e.target.value)}
+          placeholder="alex@company.com, jordan@company.com"
+          rows={3} style={{...inp(),resize:"none",fontSize:12}}/>
+      </div>
+
+      {error&&<div style={{background:"rgba(255,77,109,0.1)",border:"1px solid rgba(255,77,109,0.2)",borderRadius:9,padding:"9px 12px",marginBottom:14,fontFamily:"DM Sans",fontSize:13,color:"#ff4d6d"}}>{error}</div>}
+
+      <button onClick={create} disabled={loading}
+        style={btn("#7c3aed","white",{width:"100%",padding:"14px",fontSize:14,marginBottom:10,opacity:loading?0.6:1})}>
+        {loading?"Creating…":"Create Workspace →"}
+      </button>
+      <button onClick={onSkip}
+        style={btn("rgba(255,255,255,0.04)","#475569",{width:"100%",padding:"12px",fontSize:13})}>
+        Skip for now — just start a session
+      </button>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────
+//  WORKSPACE DASHBOARD
+// ─────────────────────────────────────────────────────────────
+const WorkspaceDashboard = ({ workspace, session, onStartSession, onLeave }) => {
+  const [members, setMembers] = useState([]);
+  const [rooms, setRooms] = useState([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviting, setInviting] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const loadMembers = async () => {
+      const { data } = await supabase.from("workspace_members").select("*").eq("workspace_id", workspace.id).order("invited_at");
+      if (data) setMembers(data);
+    };
+    const loadRooms = async () => {
+      const { data } = await supabase.from("workspace_rooms").select("*, rooms(*)").eq("workspace_id", workspace.id).order("created_at", {ascending:false}).limit(10);
+      if (data) setRooms(data.map(r=>r.rooms).filter(Boolean));
+    };
+    loadMembers();
+    loadRooms();
+  }, [workspace.id]);
+
+  const invite = async () => {
+    if (!inviteEmail.includes("@")) return;
+    setInviting(true);
+    await supabase.from("workspace_members").upsert({ workspace_id: workspace.id, email: inviteEmail.trim(), role: "member", status: "pending" }, { onConflict: "workspace_id,email" });
+    setMembers(m => [...m, { email: inviteEmail.trim(), role:"member", status:"pending", id: Date.now() }]);
+    setInviteEmail("");
+    setInviting(false);
+  };
+
+  const STATUS_COLOR = { active:"#06d6a0", pending:"#ffd166" };
+
+  return(
+    <div style={{minHeight:"100vh",background:"#08080f",backgroundImage:"radial-gradient(ellipse 70% 40% at 50% -10%,rgba(124,58,237,0.18) 0%,transparent 60%)"}}>
+      {/* Header */}
+      <div style={{padding:"14px 20px",borderBottom:"1px solid rgba(255,255,255,0.06)",display:"flex",alignItems:"center",gap:14,background:"rgba(0,0,0,0.4)",backdropFilter:"blur(16px)"}}>
+        <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#7c3aed,#5b21b6)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:14,color:"white",flexShrink:0}}>
+          {workspace.name.slice(0,1).toUpperCase()}
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"Syne",fontWeight:800,fontSize:16,color:"white"}}>{workspace.name}</div>
+          <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569"}}>{members.length} member{members.length!==1?"s":""}</div>
+        </div>
+        <button onClick={onLeave} style={btn("rgba(255,255,255,0.06)","#64748b",{fontSize:12,padding:"6px 12px"})}>← Back</button>
+      </div>
+
+      <div style={{maxWidth:720,margin:"0 auto",padding:"24px 20px 60px"}}>
+
+        {/* Quick start */}
+        <div style={{marginBottom:28}}>
+          <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:2,marginBottom:14}}>START A SESSION</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
+            {[
+              { icon:"🃏", label:"Planning Poker", type:"poker", color:"#7c3aed" },
+              { icon:"🏁", label:"Retrospective",  type:"retro", color:"#06d6a0" },
+              { icon:"📋", label:"Board",          type:"board", color:"#ffd166" },
+            ].map(s=>(
+              <button key={s.type} onClick={()=>onStartSession(s.type)}
+                style={{background:`${s.color}11`,border:`1.5px solid ${s.color}33`,borderRadius:16,padding:"20px 16px",cursor:"pointer",textAlign:"left",transition:"all 0.2s"}}
+                onMouseEnter={e=>{e.currentTarget.style.background=`${s.color}22`;e.currentTarget.style.borderColor=s.color;}}
+                onMouseLeave={e=>{e.currentTarget.style.background=`${s.color}11`;e.currentTarget.style.borderColor=`${s.color}33`;}}>
+                <div style={{fontSize:28,marginBottom:8}}>{s.icon}</div>
+                <div style={{fontFamily:"Syne",fontSize:14,fontWeight:700,color:"white"}}>{s.label}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Members */}
+        <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
+          <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>TEAM MEMBERS ({members.length})</div>
+          {members.map(m=>(
+            <div key={m.id||m.email} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10,padding:"9px 12px",background:"rgba(255,255,255,0.03)",borderRadius:10}}>
+              <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(124,58,237,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:11,color:"#a78bfa",flexShrink:0}}>
+                {m.email?.slice(0,1).toUpperCase()}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0"}}>{m.email}</div>
+                <div style={{fontFamily:"Syne",fontSize:9,color:STATUS_COLOR[m.status]||"#64748b",letterSpacing:1}}>{m.role?.toUpperCase()} · {m.status?.toUpperCase()}</div>
+              </div>
+            </div>
+          ))}
+
+          {/* Invite input */}
+          <div style={{display:"flex",gap:8,marginTop:12}}>
+            <input value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&invite()}
+              placeholder="teammate@company.com" type="email"
+              style={{...inp(),flex:1,fontSize:12}}/>
+            <button onClick={invite} disabled={inviting}
+              style={btn("#7c3aed","white",{padding:"9px 14px",fontSize:12,flexShrink:0})}>
+              {inviting?"…":"+ Invite"}
+            </button>
+          </div>
+        </div>
+
+        {/* Recent rooms */}
+        {rooms.length>0&&(
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18}}>
+            <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>RECENT SESSIONS</div>
+            {rooms.map(r=>(
+              <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:8,padding:"9px 12px",background:"rgba(255,255,255,0.03)",borderRadius:10}}>
+                <span style={{fontSize:16}}>{r.type==="poker"?"🃏":r.type==="retro"?"🏁":"📋"}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0"}}>{r.code}</div>
+                  <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569"}}>{r.type} · {new Date(r.created_at).toLocaleDateString()}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const Onboarding = ({ onEnter }) => {
   const urlCode = new URLSearchParams(window.location.search).get("join") || "";
   const [mode, setMode] = useState(urlCode ? "join" : "welcome");
@@ -1324,30 +1669,27 @@ export default function SprintVibe() {
   const [session, setSession]   = useState(null);
   const [stories, setStories]   = useState({ backlog:[], sprint:[], in_progress:[], done:[] });
   const [tab, setTab]           = useState("board");
-  const [modal, setModal]       = useState(null); // 'pricing' | 'share' | 'stripe'
+  const [modal, setModal]       = useState(null);
   const [toast, setToast]       = useState(null);
   const [participants, setParticipants] = useState([]);
+  const [workspace, setWorkspace] = useState(null);
+  const [screen, setScreen]     = useState("landing"); // landing | onboarding | workspace | app
   const { permission, requestPermission, notify } = usePushNotifications();
 
-  // Real URL — uses your actual Vercel domain so QR codes work on iPhone/Android
-  const roomUrl = session
-    ? `https://sprint-vibe.vercel.app?join=${session.room?.code}`
-    : "";
-
-  // Handle deep-link join via ?join=CODE in URL
+  // Check for ?join= on load — skip landing if joining via QR
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const joinCode = params.get("join");
-    if (joinCode) {
-      // Pre-fill the room code so the join screen is ready
-      window.pendingJoinCode = joinCode;
-    }
+    if (params.get("join")) setScreen("onboarding");
   }, []);
+
+  const roomUrl = session
+    ? `https://sprintvibe.io?join=${session.room?.code}`
+    : "";
 
   const handleEnter = (sess) => {
     setSession(sess);
     setTab("board");
-    // Request push notification permission when joining a room
+    setScreen("app");
     requestPermission();
   };
 
@@ -1355,6 +1697,7 @@ export default function SprintVibe() {
     if (session) await leaveRoom(session.room.id, session.userId);
     setSession(null);
     setStories({ backlog:[], sprint:[], in_progress:[], done:[] });
+    setScreen("landing");
   };
 
   // ── Story handlers — all synced to Supabase ──────────────
@@ -1462,25 +1805,54 @@ export default function SprintVibe() {
     { id:"settings",  l:"⚙️ Settings"  },
   ];
 
-  // Show onboarding if no session
-  if (!session) return(
+  const STYLES = `*{-webkit-tap-highlight-color:transparent;}body{margin:0;background:#08080f;}@keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}@keyframes flipIn{from{opacity:0;transform:rotateY(90deg)}to{opacity:1;transform:rotateY(0)}}@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}@keyframes noteIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}select option{background:#0d0d1c}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(124,58,237,0.3);border-radius:2px}input,textarea,select{-webkit-appearance:none;}`;
+
+  // ── LANDING PAGE ─────────────────────────────────────────
+  if (screen === "landing") return(
     <>
       <FontLoader/>
-      <style>{`*{-webkit-tap-highlight-color:transparent;}body{margin:0;background:#08080f;}@keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}select option{background:#0d0d1c}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(124,58,237,0.3);border-radius:2px}`}</style>
+      <style>{STYLES}</style>
+      <LandingPage
+        onGetStarted={()=>setScreen("onboarding")}
+        onJoin={()=>setScreen("onboarding")}
+      />
+    </>
+  );
+
+  // ── ONBOARDING ───────────────────────────────────────────
+  if (screen === "onboarding") return(
+    <>
+      <FontLoader/>
+      <style>{STYLES}</style>
       <div style={{minHeight:"100vh",background:"#08080f",backgroundImage:"radial-gradient(ellipse 70% 40% at 50% -10%,rgba(124,58,237,0.18) 0%,transparent 60%)"}}>
-        <Onboarding onEnter={handleEnter}/>
-        <div style={{textAlign:"center",paddingBottom:32}}>
-          <button onClick={()=>setModal("pricing")} style={btn("rgba(255,255,255,0.04)","#64748b",{fontSize:12,border:"1px solid rgba(255,255,255,0.06)"})}>💎 View Pricing</button>
+        <div style={{textAlign:"center",padding:"20px 0 0"}}>
+          <button onClick={()=>setScreen("landing")} style={{background:"none",border:"none",color:"#475569",cursor:"pointer",fontFamily:"Syne",fontSize:12,fontWeight:700}}>← Back to home</button>
         </div>
+        <Onboarding onEnter={handleEnter}/>
       </div>
-      {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/> }
+      {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/>}
+      {modal==="stripe"&&<StripeModal onClose={()=>setModal(null)}/>}
+    </>
+  );
+
+  // ── WORKSPACE DASHBOARD ──────────────────────────────────
+  if (screen === "workspace" && workspace) return(
+    <>
+      <FontLoader/>
+      <style>{STYLES}</style>
+      <WorkspaceDashboard
+        workspace={workspace}
+        session={session}
+        onStartSession={(type)=>setScreen("onboarding")}
+        onLeave={()=>setScreen("landing")}
+      />
     </>
   );
 
   return(
     <>
       <FontLoader/>
-      <style>{`*{-webkit-tap-highlight-color:transparent;}body{margin:0;background:#08080f;}@keyframes flipIn{from{opacity:0;transform:rotateY(90deg)}to{opacity:1;transform:rotateY(0)}}@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}@keyframes noteIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}select option{background:#0d0d1c}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(124,58,237,0.3);border-radius:2px}input,textarea,select{-webkit-appearance:none;}`}</style>
+      <style>{STYLES}</style>
 
       <div style={{minHeight:"100vh",background:"#08080f",backgroundImage:"radial-gradient(ellipse 70% 40% at 50% -10%,rgba(124,58,237,0.18) 0%,transparent 60%)",fontFamily:"DM Sans"}}>
 
