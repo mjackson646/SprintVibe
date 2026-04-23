@@ -78,12 +78,16 @@ const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
       let code = prefix + "-";
       for (let i=0;i<4;i++) code += chars[Math.floor(Math.random()*chars.length)];
 
-      const { data: room } = await supabase.from("rooms")
-        .insert({ code, type, host_id: userId, phase:"lobby" }).select().single();
+      const { data: room, error: roomErr } = await supabase.from("rooms")
+        .insert({ code, type, host_id: userId, phase:"lobby", active: true })
+        .select().single();
+
+      if (roomErr) throw roomErr;
 
       // Link room to workspace if one is active
       if (activeWs && room) {
-        await supabase.from("workspace_rooms").insert({ workspace_id: activeWs.id, room_id: room.id }).catch(()=>{});
+        await supabase.from("workspace_rooms")
+          .insert({ workspace_id: activeWs.id, room_id: room.id }).catch(()=>{});
       }
 
       if (room) {
@@ -91,10 +95,25 @@ const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
           room_id: room.id, user_id: userId, display_name: displayName,
           avatar: displayName.slice(0,2).toUpperCase(), color, role:"host", online:true
         }, { onConflict:"room_id,user_id" });
+
+        // Refresh recent rooms
+        setRecentRooms(p=>[room,...p]);
         onEnterRoom({ userId, displayName, color, room, role:"host", user: session?.user });
       }
-    } catch(e) { setError("Could not create room"); }
+    } catch(e) {
+      console.error("createRoom error:", e);
+      setError(`Could not create room: ${e.message || "unknown error"}`);
+    }
     finally { setLoading(false); setShowNewRoom(false); }
+  };
+
+  const deleteWorkspace = async (ws) => {
+    if (!window.confirm(`Delete workspace "${ws.name}"? This cannot be undone.`)) return;
+    try {
+      await supabase.from("workspaces").delete().eq("id", ws.id);
+      setWorkspaces(p => p.filter(w => w.id !== ws.id));
+      if (activeWs?.id === ws.id) setActiveWs(null);
+    } catch(e) { setError("Could not delete workspace"); }
   };
 
   const joinByCode = async () => {
@@ -139,16 +158,23 @@ const RoomSelector = ({ session, onEnterRoom, onSignOut, onGoHome }) => {
           <div style={{padding:"16px 14px 10px",fontFamily:"Syne",fontSize:10,color:"#475569",letterSpacing:2}}>WORKSPACES</div>
 
           {workspaces.map(ws=>(
-            <button key={ws.id} onClick={()=>setActiveWs(ws)}
-              style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:activeWs?.id===ws.id?"rgba(124,58,237,0.15)":"transparent",border:"none",borderLeft:`3px solid ${activeWs?.id===ws.id?"#7c3aed":"transparent"}`,cursor:"pointer",textAlign:"left",width:"100%",transition:"all 0.15s"}}>
-              <div style={{width:30,height:30,borderRadius:9,background:`linear-gradient(135deg,#7c3aed,#5b21b6)`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:12,color:"white",flexShrink:0}}>
-                {ws.name.slice(0,1).toUpperCase()}
-              </div>
-              <div style={{flex:1,overflow:"hidden"}}>
-                <div style={{fontFamily:"DM Sans",fontSize:12,fontWeight:600,color:"#e2e8f0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ws.name}</div>
-                <div style={{fontFamily:"DM Sans",fontSize:10,color:"#475569",textTransform:"capitalize"}}>{ws.plan} plan</div>
-              </div>
-            </button>
+            <div key={ws.id} style={{display:"flex",alignItems:"center",borderLeft:`3px solid ${activeWs?.id===ws.id?"#7c3aed":"transparent"}`,background:activeWs?.id===ws.id?"rgba(124,58,237,0.15)":"transparent",transition:"all 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.querySelector(".ws-del").style.opacity="1"}
+              onMouseLeave={e=>e.currentTarget.querySelector(".ws-del").style.opacity="0"}>
+              <button onClick={()=>setActiveWs(ws)}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"none",border:"none",cursor:"pointer",textAlign:"left",flex:1}}>
+                <div style={{width:30,height:30,borderRadius:9,background:"linear-gradient(135deg,#7c3aed,#5b21b6)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:12,color:"white",flexShrink:0}}>
+                  {ws.name.slice(0,1).toUpperCase()}
+                </div>
+                <div style={{flex:1,overflow:"hidden"}}>
+                  <div style={{fontFamily:"DM Sans",fontSize:12,fontWeight:600,color:"#e2e8f0",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ws.name}</div>
+                  <div style={{fontFamily:"DM Sans",fontSize:10,color:"#475569",textTransform:"capitalize"}}>{ws.plan} plan</div>
+                </div>
+              </button>
+              <button className="ws-del" onClick={()=>deleteWorkspace(ws)}
+                style={{opacity:0,transition:"opacity 0.15s",background:"none",border:"none",color:"#ff4d6d",cursor:"pointer",padding:"0 10px",fontSize:14,lineHeight:1}}
+                title="Delete workspace">×</button>
+            </div>
           ))}
 
           {/* Add workspace */}
@@ -1633,71 +1659,146 @@ const PricingModal = ({ onClose, onUpgrade }) => {
 //  ANALYTICS VIEW
 // ─────────────────────────────────────────────────────────────
 const AnalyticsView = ({ stories, session }) => {
-  const allStories = Object.values(stories).flat();
-  const estimated  = allStories.filter(s=>s.points).length;
-  const totalPts   = allStories.reduce((a,s)=>a+(parseInt(s.points)||0),0);
-  const donePts    = (stories.done||[]).reduce((a,s)=>a+(parseInt(s.points)||0),0);
-  const prog       = totalPts ? Math.round(donePts/totalPts*100) : 0;
-  const byPriority = { high:0, medium:0, low:0 };
+  const allStories  = Object.values(stories).flat();
+  const totalPts    = allStories.reduce((a,s)=>a+(parseInt(s.points)||0),0);
+  const backlogPts  = (stories.backlog||[]).reduce((a,s)=>a+(parseInt(s.points)||0),0);
+  const sprintPts   = (stories.sprint||[]).reduce((a,s)=>a+(parseInt(s.points)||0),0);
+  const inProgPts   = (stories.in_progress||[]).reduce((a,s)=>a+(parseInt(s.points)||0),0);
+  const donePts     = (stories.done||[]).reduce((a,s)=>a+(parseInt(s.points)||0),0);
+  const remaining   = totalPts - donePts;
+  const prog        = totalPts ? Math.round(donePts/totalPts*100) : 0;
+  const estimated   = allStories.filter(s=>s.points).length;
+  const byPriority  = {high:0,medium:0,low:0};
   allStories.forEach(s=>{ if(byPriority[s.priority]!==undefined) byPriority[s.priority]++; });
 
-  const Stat = ({label,value,color,sub}) => (
-    <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:16,textAlign:"center"}}>
-      <div style={{fontFamily:"Syne",fontSize:28,fontWeight:800,color:color||"white"}}>{value}</div>
-      <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginTop:3}}>{label}</div>
-      {sub&&<div style={{fontFamily:"DM Sans",fontSize:10,color:"#334155",marginTop:2}}>{sub}</div>}
-    </div>
-  );
+  // ── BURNDOWN CHART (SVG) ───────────────────────────────────
+  // Simulate a 10-day sprint burndown based on current board state
+  const SPRINT_DAYS = 10;
+  const W = 520, H = 220, PAD = 40;
+  const chartW = W - PAD*2, chartH = H - PAD*2;
+
+  // Build data points: ideal line + actual progress line
+  // We estimate velocity from done stories
+  const doneCount   = (stories.done||[]).length;
+  const totalCount  = allStories.length || 1;
+  const daysPassed  = Math.max(1, Math.round((doneCount / totalCount) * SPRINT_DAYS));
+
+  const ideal = Array.from({length:SPRINT_DAYS+1},(_,i)=>({
+    day: i,
+    pts: Math.max(0, totalPts - (totalPts/SPRINT_DAYS)*i)
+  }));
+
+  // Actual: flat for future days, decreasing for past based on done pts
+  const actual = Array.from({length:SPRINT_DAYS+1},(_,i)=>{
+    if (i === 0) return { day:0, pts:totalPts };
+    if (i <= daysPassed) return { day:i, pts: Math.max(0, totalPts - (donePts/daysPassed)*i) };
+    return null; // future — don't draw
+  }).filter(Boolean);
+
+  const xPos = (day) => PAD + (day/SPRINT_DAYS)*chartW;
+  const yPos = (pts) => totalPts===0 ? PAD+chartH : PAD + chartH - (pts/totalPts)*chartH;
+
+  const idealPath = ideal.map((p,i)=>`${i===0?"M":"L"}${xPos(p.day)},${yPos(p.pts)}`).join(" ");
+  const actualPath = actual.map((p,i)=>`${i===0?"M":"L"}${xPos(p.day)},${yPos(p.pts)}`).join(" ");
 
   return(
-    <div style={{padding:"20px 16px 48px",maxWidth:640,margin:"0 auto"}}>
-      <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:4}}>Analytics 📊</div>
-      <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569",marginBottom:24}}>Room: <span style={{color:"#a78bfa"}}>{session.room?.code}</span></div>
+    <div style={{padding:"20px 16px 48px",maxWidth:680,margin:"0 auto"}}>
+      <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:4}}>Sprint Burndown 🔥</div>
+      <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569",marginBottom:20}}>Room: <span style={{color:"#a78bfa"}}>{session.room?.code}</span></div>
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:24}}>
-        <Stat label="Total Stories"   value={allStories.length}  color="#7c3aed"/>
-        <Stat label="Estimated"       value={estimated}           color="#a78bfa" sub={`${allStories.length-estimated} remaining`}/>
-        <Stat label="Sprint Points"   value={totalPts}            color="#ffd166"/>
-        <Stat label="Completed"       value={`${prog}%`}          color="#06d6a0" sub={`${donePts}/${totalPts} pts`}/>
+      {/* Stats row */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginBottom:20}}>
+        {[
+          {l:"Total Points",  v:totalPts,         c:"#7c3aed"},
+          {l:"Done",          v:`${donePts}pts`,   c:"#06d6a0"},
+          {l:"Remaining",     v:`${remaining}pts`, c:"#ffd166"},
+          {l:"Progress",      v:`${prog}%`,        c:"#a78bfa"},
+        ].map(s=>(
+          <div key={s.l} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:13,padding:"13px 14px",textAlign:"center"}}>
+            <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:s.c}}>{s.v}</div>
+            <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginTop:2}}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Burndown Chart */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:"16px 16px 8px",marginBottom:16,overflowX:"auto"}}>
+        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:2,marginBottom:10}}>BURNDOWN CHART</div>
+        {totalPts===0 ? (
+          <div style={{textAlign:"center",padding:"40px 0",color:"#334155",fontFamily:"DM Sans",fontSize:13}}>Add estimated stories to see the burndown</div>
+        ) : (
+          <svg width={W} height={H} style={{display:"block",maxWidth:"100%"}}>
+            {/* Grid lines */}
+            {[0,0.25,0.5,0.75,1].map(f=>(
+              <g key={f}>
+                <line x1={PAD} y1={PAD+chartH*f} x2={PAD+chartW} y2={PAD+chartH*f} stroke="rgba(255,255,255,0.05)" strokeWidth={1}/>
+                <text x={PAD-6} y={PAD+chartH*f+4} textAnchor="end" fill="#334155" fontSize={10} fontFamily="DM Mono">
+                  {Math.round(totalPts*(1-f))}
+                </text>
+              </g>
+            ))}
+            {/* Day labels */}
+            {[0,2,4,6,8,10].map(d=>(
+              <text key={d} x={xPos(d)} y={H-6} textAnchor="middle" fill="#334155" fontSize={10} fontFamily="DM Mono">D{d}</text>
+            ))}
+            {/* Axes */}
+            <line x1={PAD} y1={PAD} x2={PAD} y2={PAD+chartH} stroke="rgba(255,255,255,0.1)" strokeWidth={1}/>
+            <line x1={PAD} y1={PAD+chartH} x2={PAD+chartW} y2={PAD+chartH} stroke="rgba(255,255,255,0.1)" strokeWidth={1}/>
+            {/* Ideal line */}
+            <path d={idealPath} fill="none" stroke="#334155" strokeWidth={1.5} strokeDasharray="6,4"/>
+            {/* Actual line */}
+            <path d={actualPath} fill="none" stroke="#7c3aed" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"/>
+            {/* Actual dots */}
+            {actual.map(p=>(
+              <circle key={p.day} cx={xPos(p.day)} cy={yPos(p.pts)} r={4} fill="#7c3aed" stroke="#08080f" strokeWidth={2}/>
+            ))}
+            {/* Today marker */}
+            <line x1={xPos(daysPassed)} y1={PAD} x2={xPos(daysPassed)} y2={PAD+chartH} stroke="#ffd166" strokeWidth={1} strokeDasharray="4,3"/>
+            <text x={xPos(daysPassed)+4} y={PAD+12} fill="#ffd166" fontSize={9} fontFamily="Syne" fontWeight="700">TODAY</text>
+            {/* Legend */}
+            <line x1={PAD+chartW-120} y1={PAD+8} x2={PAD+chartW-100} y2={PAD+8} stroke="#334155" strokeWidth={1.5} strokeDasharray="6,4"/>
+            <text x={PAD+chartW-96} y={PAD+12} fill="#475569" fontSize={9} fontFamily="DM Sans">Ideal</text>
+            <line x1={PAD+chartW-60} y1={PAD+8} x2={PAD+chartW-40} y2={PAD+8} stroke="#7c3aed" strokeWidth={2}/>
+            <text x={PAD+chartW-36} y={PAD+12} fill="#a78bfa" fontSize={9} fontFamily="DM Sans">Actual</text>
+          </svg>
+        )}
+      </div>
+
+      {/* Column breakdown bars */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
+        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:2,marginBottom:16}}>POINTS BY COLUMN</div>
+        {[
+          {l:"Backlog",     pts:backlogPts, c:"#64748b", col:"backlog"},
+          {l:"Sprint Ready",pts:sprintPts,  c:"#ffd166", col:"sprint"},
+          {l:"In Progress", pts:inProgPts,  c:"#7c3aed", col:"in_progress"},
+          {l:"Done ✓",      pts:donePts,    c:"#06d6a0", col:"done"},
+        ].map(r=>(
+          <div key={r.l} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+              <span style={{fontFamily:"DM Sans",fontSize:12,color:"#94a3b8"}}>{r.l}</span>
+              <span style={{fontFamily:"Syne",fontSize:12,fontWeight:700,color:r.c}}>{r.pts}pts · {(stories[r.col]||[]).length} stories</span>
+            </div>
+            <div style={{background:"rgba(255,255,255,0.06)",borderRadius:6,height:8}}>
+              <div style={{width:`${totalPts?Math.round(r.pts/totalPts*100):0}%`,background:r.c,height:"100%",borderRadius:6,transition:"width 0.8s"}}/>
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Priority breakdown */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
-        <div style={{fontFamily:"Syne",fontSize:11,color:"#64748b",letterSpacing:1,marginBottom:14}}>PRIORITY BREAKDOWN</div>
-        {[{k:"high",l:"High Priority",c:"#ff4d6d"},{k:"medium",l:"Medium Priority",c:"#ffd166"},{k:"low",l:"Low Priority",c:"#06d6a0"}].map(p=>(
-          <div key={p.k} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-              <span style={{fontFamily:"DM Sans",fontSize:12,color:"#94a3b8"}}>{p.l}</span>
-              <span style={{fontFamily:"Syne",fontSize:12,fontWeight:700,color:p.c}}>{byPriority[p.k]}</span>
-            </div>
-            <div style={{background:"rgba(255,255,255,0.06)",borderRadius:4,height:6}}>
-              <div style={{width:`${allStories.length?Math.round(byPriority[p.k]/allStories.length*100):0}%`,background:p.c,height:"100%",borderRadius:4,transition:"width 0.6s"}}/>
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18}}>
+        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:2,marginBottom:14}}>PRIORITY BREAKDOWN</div>
+        {[{k:"high",l:"High",c:"#ff4d6d"},{k:"medium",l:"Medium",c:"#ffd166"},{k:"low",l:"Low",c:"#06d6a0"}].map(p=>(
+          <div key={p.k} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+            <span style={{width:8,height:8,borderRadius:"50%",background:p.c,flexShrink:0}}/>
+            <span style={{fontFamily:"DM Sans",fontSize:13,color:"#94a3b8",flex:1}}>{p.l} Priority</span>
+            <span style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:p.c}}>{byPriority[p.k]}</span>
+            <div style={{width:80,background:"rgba(255,255,255,0.06)",borderRadius:4,height:5}}>
+              <div style={{width:`${allStories.length?Math.round(byPriority[p.k]/allStories.length*100):0}%`,background:p.c,height:"100%",borderRadius:4}}/>
             </div>
           </div>
         ))}
       </div>
-
-      {/* Column breakdown */}
-      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:18,marginBottom:16}}>
-        <div style={{fontFamily:"Syne",fontSize:11,color:"#64748b",letterSpacing:1,marginBottom:14}}>BOARD STATUS</div>
-        {COLUMNS.map(col=>(
-          <div key={col.id} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
-            <span style={{width:9,height:9,borderRadius:3,background:col.color,flexShrink:0}}/>
-            <span style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",flex:1}}>{col.title}</span>
-            <span style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:col.color}}>{(stories[col.id]||[]).length}</span>
-            <span style={{fontFamily:"DM Sans",fontSize:11,color:"#475569"}}>stories</span>
-          </div>
-        ))}
-      </div>
-
-      {/* Upgrade prompt if no stories */}
-      {allStories.length===0&&(
-        <div style={{background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:14,padding:18,textAlign:"center"}}>
-          <div style={{fontSize:28,marginBottom:8}}>📈</div>
-          <div style={{fontFamily:"Syne",fontSize:14,fontWeight:700,color:"white",marginBottom:6}}>No data yet</div>
-          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>Add stories to your board to see analytics</div>
-        </div>
-      )}
     </div>
   );
 };
