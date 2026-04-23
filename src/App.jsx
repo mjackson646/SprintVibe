@@ -2196,33 +2196,33 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
 };
 
 export default function SprintVibe() {
-  const [session, setSession]   = useState(null);
-  const [stories, setStories]   = useState({ backlog:[], sprint:[], in_progress:[], done:[] });
-  const [tab, setTab]           = useState("board");
-  const [modal, setModal]       = useState(null);
-  const [toast, setToast]       = useState(null);
+  const [session, setSession]           = useState(null);
+  const [stories, setStories]           = useState({ backlog:[], sprint:[], in_progress:[], done:[] });
+  const [tab, setTab]                   = useState("board");
+  const [modal, setModal]               = useState(null);
+  const [toast, setToast]               = useState(null);
   const [participants, setParticipants] = useState([]);
-  const [workspace, setWorkspace] = useState(null);
-  const [screen, setScreen]     = useState("landing");
-  const [signinMode, setSigninMode] = useState("welcome");
-  const [userPlan, setUserPlan] = useState(() => {
+  const [workspace, setWorkspace]       = useState(null);
+  const [screen, setScreen]             = useState("landing");
+  const [signinMode, setSigninMode]     = useState("welcome");
+  const [userPlan, setUserPlan]         = useState(() => {
     try { return localStorage.getItem("sv_plan") || "free"; } catch { return "free"; }
   });
-  const [paywall, setPaywall] = useState(null); // feature key or null
-  const { permission, requestPermission, notify } = usePushNotifications();
+  const [paywall, setPaywall]           = useState(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     try { return localStorage.getItem("sv_notif_enabled") !== "false"; } catch { return true; }
   });
 
-  // Plan helpers — defined BEFORE useEffect so they can be called inside it
+  // Custom hooks — called after all useState
+  const { permission, requestPermission, notify } = usePushNotifications();
+
+  // Plan helpers
   const isPro = ["pro","team","corporate"].includes(userPlan);
   const isTeam = ["team","corporate"].includes(userPlan);
   const upgradePlan = (plan) => {
     setUserPlan(plan);
     try { localStorage.setItem("sv_plan", plan); } catch {}
   };
-
-  // Gate a feature — returns true if allowed, false + shows paywall if not
   const canUse = (feature) => {
     if (isPro) return true;
     if ((feature === "hosting_poker" || feature === "hosting_retro") && session?.role !== "host") return true;
@@ -2230,18 +2230,15 @@ export default function SprintVibe() {
     return false;
   };
 
-  // ── Session persistence — restore on refresh ─────────────
+  // Notification helpers
   const smartNotify = (title, body) => {
     if (notificationsEnabled) notify(title, body);
   };
-
   const handleToggleNotifications = async () => {
     if (notificationsEnabled) {
-      // Turn off — save permanently
       setNotificationsEnabled(false);
       try { localStorage.setItem("sv_notif_enabled", "false"); } catch {}
     } else {
-      // Turn on — request browser permission if needed
       if (permission !== "granted") {
         const result = await requestPermission();
         if (result !== "granted") return;
