@@ -1912,6 +1912,12 @@ export default function SprintVibe() {
     setSigninMode(mode);
     setScreen(newScreen);
   };
+
+  // Update session everywhere (name changes etc)
+  const handleUpdateSession = (updatedSession) => {
+    setSession(updatedSession);
+    try { localStorage.setItem("sprintvibe_session", JSON.stringify(updatedSession)); } catch(e) {}
+  };
     setSession(updatedSession);
     try { localStorage.setItem("sprintvibe_session", JSON.stringify(updatedSession)); } catch(e) {}
   };
