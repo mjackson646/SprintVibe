@@ -1128,7 +1128,7 @@ export default function SprintVibe() {
 
   // Real URL — uses your actual Vercel domain so QR codes work on iPhone/Android
   const roomUrl = session
-    ? `https://sprint-vibe.vercel.app?join=${session.room?.code}`
+    ? `https://sprintvibe.io?join=${session.room?.code}`
     : "";
 
   // Handle deep-link join via ?join=CODE in URL
