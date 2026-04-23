@@ -23,7 +23,7 @@ const FontLoader = () => {
 // ─────────────────────────────────────────────────────────────
 //  LANDING PAGE — bold & energetic
 // ─────────────────────────────────────────────────────────────
-const LandingPage = ({ onGetStarted, onJoin }) => {
+const LandingPage = ({ onGetStarted, onJoin, onSignIn }) => {
   const [hovered, setHovered] = useState(null);
   const FEATURES = [
     { icon:"🃏", title:"Planning Poker", desc:"Real-time card voting. Everyone reveals at once — no anchoring bias." },
@@ -48,6 +48,7 @@ const LandingPage = ({ onGetStarted, onJoin }) => {
           Sprint<span style={{color:"#7c3aed"}}>Vibe</span>
         </div>
         <div style={{display:"flex",gap:12,alignItems:"center"}}>
+          <button onClick={onSignIn} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 16px",color:"#94a3b8",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13}}>Sign In</button>
           <button onClick={onJoin} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"8px 16px",color:"#94a3b8",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13}}>Join a Room</button>
           <button onClick={onGetStarted} style={{background:"#7c3aed",border:"none",borderRadius:10,padding:"8px 18px",color:"white",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:13}}>Get Started Free →</button>
         </div>
@@ -515,9 +516,9 @@ const WorkspaceDashboard = ({ workspace, session, onStartSession, onLeave }) => 
   );
 };
 
-const Onboarding = ({ onEnter }) => {
+const Onboarding = ({ onEnter, initialMode="welcome" }) => {
   const urlCode = new URLSearchParams(window.location.search).get("join") || "";
-  const [mode, setMode] = useState(urlCode ? "join" : "welcome");
+  const [mode, setMode] = useState(urlCode ? "join" : initialMode);
   const [name, setName] = useState("");
   const [guestEmail, setGuestEmail] = useState(""); // for recap emails
   const [roomCode, setRoomCode] = useState(urlCode);
@@ -1817,6 +1818,7 @@ export default function SprintVibe() {
   const [participants, setParticipants] = useState([]);
   const [workspace, setWorkspace] = useState(null);
   const [screen, setScreen]     = useState("landing");
+  const [signinMode, setSigninMode] = useState("welcome"); // controls which onboarding tab opens
   const { permission, requestPermission, notify } = usePushNotifications();
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
     // Load saved preference — defaults to true if never set
@@ -2031,6 +2033,7 @@ export default function SprintVibe() {
       <LandingPage
         onGetStarted={()=>setScreen("onboarding")}
         onJoin={()=>setScreen("onboarding")}
+        onSignIn={()=>{ setSigninMode("login"); setScreen("onboarding"); }}
       />
     </>
   );
@@ -2044,7 +2047,7 @@ export default function SprintVibe() {
         <div style={{textAlign:"center",padding:"20px 0 0"}}>
           <button onClick={()=>setScreen("landing")} style={{background:"none",border:"none",color:"#475569",cursor:"pointer",fontFamily:"Syne",fontSize:12,fontWeight:700}}>← Back to home</button>
         </div>
-        <Onboarding onEnter={handleEnter}/>
+        <Onboarding onEnter={handleEnter} initialMode={signinMode}/>
       </div>
       {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/>}
       {modal==="stripe"&&<StripeModal onClose={()=>setModal(null)}/>}
