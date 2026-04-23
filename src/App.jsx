@@ -1854,9 +1854,9 @@ const PaywallModal = ({ feature, onClose, onUpgrade }) => {
         {/* What you get with Pro */}
         <div style={{background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:14,padding:"14px 16px",marginBottom:22,textAlign:"left"}}>
           <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:1,marginBottom:10}}>UNLOCK WITH PRO — $7/mo</div>
-          {["Host Poker & Retro sessions","AI coach summaries","Email recaps to your team","Unlimited workspaces","Sprint burndown analytics","Priority support"].map(f=>(
-            <div key={f} style={{display:"flex",gap:8,marginBottom:6,fontFamily:"DM Sans",fontSize:12,color:"#94a3b8"}}>
-              <span style={{color:"#7c3aed",flexShrink:0}}>✓</span>{f}
+          {["Host Poker & Retro sessions","AI coach summaries","Email recaps to your team","Unlimited workspaces","Sprint burndown analytics","Priority support"].map(feat=>(
+            <div key={feat} style={{display:"flex",gap:8,marginBottom:6,fontFamily:"DM Sans",fontSize:12,color:"#94a3b8"}}>
+              <span style={{color:"#7c3aed",flexShrink:0}}>✓</span>{feat}
             </div>
           ))}
         </div>
