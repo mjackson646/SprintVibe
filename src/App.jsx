@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import { supabase, createRoom, findRoom, joinRoom, leaveRoom,
          castPokerVote, revealPokerVotes, getPokerVotes,
          addRetroNote, voteRetroNote, getRetroNotes,
@@ -63,22 +64,10 @@ const inp = (ex={}) => ({
 // ─────────────────────────────────────────────────────────────
 //  QR CODE SVG
 // ─────────────────────────────────────────────────────────────
-const QRCode = ({ value, size=140 }) => {
-  const hash=[...value].reduce((a,c)=>(a*31+c.charCodeAt(0))|0,0);
-  const N=21, cell=size/N;
-  const grid=Array.from({length:N},(_,r)=>Array.from({length:N},(_,c)=>{
-    if((r<7&&c<7)||(r<7&&c>13)||(r>13&&c<7))
-      return !((r===1||r===5)&&c>=1&&c<=5)&&!((c===1||c===5)&&r>=1&&r<=5)&&!(r>=2&&r<=4&&c>=2&&c<=4)?1:r>=2&&r<=4&&c>=2&&c<=4?1:0;
-    if(r===6||c===6)return(r+c)%2===0?1:0;
-    return((hash>>((r*N+c)%32))&1)^((r*c)%3===0?1:0);
-  }));
-  return(
-    <svg width={size} height={size} style={{display:"block",borderRadius:6}}>
-      <rect width={size} height={size} fill="white"/>
-      {grid.flatMap((row,r)=>row.map((on,c)=>on?<rect key={`${r}-${c}`} x={c*cell} y={r*cell} width={cell} height={cell} fill="#0d0d1c"/>:null))}
-    </svg>
-  );
-};
+// Real scannable QR code using qrcode.react
+const QRCode = ({ value, size=140 }) => (
+  <QRCodeSVG value={value} size={size} bgColor="white" fgColor="#0d0d1c" level="M" style={{display:"block",borderRadius:6}}/>
+);
 
 // ─────────────────────────────────────────────────────────────
 //  COUNTDOWN RING
@@ -998,7 +987,7 @@ export default function SprintVibe() {
 
   // Real URL — uses your actual Vercel domain so QR codes work on iPhone/Android
   const roomUrl = session
-    ? `https://sprint-vibe.vercel.app?join=${session.room?.code}`
+    ? `${window.location.protocol}//${window.location.host}?join=${session.room?.code}`
     : "";
 
   // Handle deep-link join via ?join=CODE in URL
