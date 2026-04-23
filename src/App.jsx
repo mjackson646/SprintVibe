@@ -367,15 +367,16 @@ const LandingPage = ({ onGetStarted, onJoin, onSignIn }) => {
       <div style={{padding:"0 24px 80px",maxWidth:700,margin:"0 auto",textAlign:"center"}}>
         <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:3,marginBottom:12}}>PRICING</div>
         <h2 style={{fontFamily:"Syne",fontWeight:800,fontSize:"clamp(26px,4vw,42px)",letterSpacing:-1,marginBottom:12}}>Free to start. Scales with you.</h2>
-        <p style={{color:"#475569",fontSize:16,marginBottom:36,lineHeight:1.6}}>Solo plan is free forever. Upgrade when your team grows.</p>
+        <p style={{color:"#475569",fontSize:16,marginBottom:36,lineHeight:1.6}}>Free plan forever — upgrade when your team needs more.</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:32}}>
           {[
-            { name:"Solo", price:"Free", color:"#06d6a0", features:"3 rooms · Poker · Retro · QR" },
-            { name:"Pro", price:"$7/mo", color:"#7c3aed", hl:true, features:"Unlimited · AI · Integrations" },
-            { name:"Team", price:"$19/mo", color:"#ffd166", features:"20 members · Analytics · Priority" },
-            { name:"Corporate", price:"$49/mo", color:"#ff4d6d", features:"Unlimited · SSO · SLA" },
+            { name:"Free",      price:"$0",     color:"#06d6a0", features:"1 workspace · Board · Join sessions" },
+            { name:"Pro",       price:"$7/mo",  color:"#7c3aed", hl:true, features:"Unlimited · AI coach · All tools" },
+            { name:"Team",      price:"$19/mo", color:"#ffd166", features:"20 members · Analytics · Priority" },
+            { name:"Corporate", price:"$49/mo", color:"#ff4d6d", features:"Unlimited · SSO · Custom branding" },
           ].map(p=>(
             <div key={p.name} style={{background:p.hl?"rgba(124,58,237,0.12)":"rgba(255,255,255,0.03)",border:`1.5px solid ${p.hl?"#7c3aed":"rgba(255,255,255,0.07)"}`,borderRadius:16,padding:"18px 14px",textAlign:"center"}}>
+              {p.hl&&<div style={{fontFamily:"Syne",fontSize:8,color:"#7c3aed",letterSpacing:2,marginBottom:4}}>★ POPULAR</div>}
               <div style={{fontFamily:"Syne",fontSize:14,fontWeight:800,color:p.color,marginBottom:4}}>{p.name}</div>
               <div style={{fontFamily:"Syne",fontSize:18,fontWeight:800,color:"white",marginBottom:6}}>{p.price}</div>
               <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",lineHeight:1.4}}>{p.features}</div>
@@ -1204,7 +1205,7 @@ const PokerSession = ({ stories, session, roomUrl }) => {
 // ─────────────────────────────────────────────────────────────
 //  RETROSPECTIVE
 // ─────────────────────────────────────────────────────────────
-const RetroView = ({ session, roomUrl }) => {
+const RetroView = ({ session, roomUrl, isPro, onPaywall }) => {
   const { userId, displayName, room, role } = session;
   const [phase, setPhaseLocal] = useState("lobby");
   const [notes, setNotes] = useState({ went_well:[], improve:[], action_items:[] });
@@ -1475,11 +1476,19 @@ const RetroView = ({ session, roomUrl }) => {
           {aiSummary.actions?.map((a,i)=><div key={i} style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",display:"flex",gap:8,marginBottom:5}}><span style={{color:"#7c3aed",fontWeight:700}}>{i+1}.</span>{a}</div>)}
         </div>
       ):(
-        <button onClick={getAI} disabled={aiLoading} style={btn("rgba(124,58,237,0.18)","#a78bfa",{width:"100%",padding:"12px",border:"1px solid rgba(124,58,237,0.3)",marginBottom:16})}>{aiLoading?"✨ Generating…":"✨ Generate AI Coach Summary"}</button>
+        <button onClick={()=>{ if(isPro){ getAI(); } else { onPaywall&&onPaywall("ai_coach"); }}} disabled={aiLoading} style={btn("rgba(124,58,237,0.18)","#a78bfa",{width:"100%",padding:"12px",border:"1px solid rgba(124,58,237,0.3)",marginBottom:16})}>{aiLoading?"✨ Generating…":isPro?"✨ Generate AI Coach Summary":"✨ AI Coach Summary 🔒 — Upgrade to Pro"}</button>
       )}
 
-      {/* Email Recap — send to everyone */}
-      <EmailRecap notes={notes} aiSummary={aiSummary} roomCode={room?.code}/>
+      {/* Email Recap — Pro feature */}
+      {isPro
+        ? <EmailRecap notes={notes} aiSummary={aiSummary} roomCode={room?.code}/>
+        : <div style={{background:"rgba(124,58,237,0.06)",border:"1px solid rgba(124,58,237,0.15)",borderRadius:14,padding:16,marginBottom:16,textAlign:"center"}}>
+            <div style={{fontSize:20,marginBottom:6}}>📧</div>
+            <div style={{fontFamily:"Syne",fontSize:13,fontWeight:700,color:"#a78bfa",marginBottom:4}}>Email Recaps — Pro Feature</div>
+            <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569",marginBottom:10}}>Send the retro summary to your whole team automatically</div>
+            <button onClick={()=>onPaywall&&onPaywall("email_recaps")} style={btn("#7c3aed","white",{padding:"8px 20px",fontSize:12})}>🔒 Upgrade to unlock</button>
+          </div>
+      }
 
       <div style={{display:"flex",gap:10,marginTop:12}}>
         <button onClick={()=>advancePhase("lobby")} style={btn("rgba(255,255,255,0.06)","#64748b",{flex:1,padding:"12px"})}>Start New Retro</button>
@@ -1495,14 +1504,14 @@ const RetroView = ({ session, roomUrl }) => {
 const PricingModal = ({ onClose, onUpgrade }) => {
   const [annual, setAnnual] = useState(false);
   const plans = [
-    { id:"solo",      name:"Solo",      price:0,           color:"#06d6a0", desc:"Solo creators, artists & indie devs",
-      features:["3 projects","Planning poker","Retrospectives","QR join","5 AI estimates/mo"] },
-    { id:"pro",       name:"Pro",       price:annual?59:7,  color:"#7c3aed", hl:true, desc:"Freelancers & small teams (≤5)",
-      features:["Unlimited projects","All Solo features","Unlimited AI estimates","Notion/Jira/Linear export","Slack integration","Custom room branding"] },
-    { id:"team",      name:"Team",      price:annual?159:19, color:"#ffd166", desc:"Growing teams up to 20",
-      features:["Everything in Pro","20 members","Analytics dashboard","Priority support","Custom workflows","Session history"] },
-    { id:"corporate", name:"Corporate", price:annual?399:49, color:"#ff4d6d", desc:"Enterprise & agencies",
-      features:["Unlimited members","SSO / SAML","Dedicated success mgr","Custom branding","SLA guarantee","On-premise option"] },
+    { id:"free", name:"Free", price:0, color:"#06d6a0", desc:"Get started — no credit card needed",
+      features:["1 workspace","Kanban board (host)","Join any Poker & Retro session","QR code join","Up to 5 teammates"] },
+    { id:"pro", name:"Pro", price:annual?59:7, color:"#7c3aed", hl:true, desc:"Everything you need to run your team",
+      features:["Unlimited workspaces","Host Poker & Retro sessions","AI coach summaries","Email recaps to team","Sprint burndown analytics","Priority support"] },
+    { id:"team", name:"Team", price:annual?159:19, color:"#ffd166", desc:"Built for growing teams up to 20",
+      features:["Everything in Pro","Up to 20 members","Advanced analytics","Custom workflows","Session history & export","Dedicated onboarding"] },
+    { id:"corporate", name:"Corporate", price:annual?399:49, color:"#ff4d6d", desc:"Enterprise teams & agencies",
+      features:["Everything in Team","Unlimited members","SSO / SAML login","Custom branding","SLA guarantee","Dedicated success manager"] },
   ];
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.94)",zIndex:200,overflowY:"auto",padding:16}} onClick={onClose}>
@@ -1527,6 +1536,12 @@ const PricingModal = ({ onClose, onUpgrade }) => {
               <div style={{fontFamily:"Syne",fontSize:26,fontWeight:800,color:"white"}}>
                 {p.price===0?"Free":`$${p.price}`}
                 {p.price>0&&<span style={{fontSize:11,color:"#475569",fontWeight:400}}>/mo</span>}
+              </div>
+              <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",margin:"7px 0 12px",lineHeight:1.4}}>{p.desc}</div>
+              {p.features.map(f=><div key={f} style={{fontFamily:"DM Sans",fontSize:11,color:"#94a3b8",marginBottom:5,display:"flex",gap:6}}><span style={{color:p.color}}>✓</span>{f}</div>)}
+              <button onClick={()=>{ if(p.price>0){ onClose(); onUpgrade&&onUpgrade(p.id); }}}
+                style={btn(p.hl?"#7c3aed":"rgba(255,255,255,0.05)",p.hl?"white":"#64748b",{width:"100%",padding:"9px",marginTop:14})}>
+                {p.price===0?"Current Free Plan":"Upgrade to "+p.name+" →"}
               </div>
               <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",margin:"7px 0 12px",lineHeight:1.4}}>{p.desc}</div>
               {p.features.map(f=><div key={f} style={{fontFamily:"DM Sans",fontSize:11,color:"#94a3b8",marginBottom:5,display:"flex",gap:6}}><span style={{color:p.color}}>✓</span>{f}</div>)}
@@ -1820,7 +1835,51 @@ const EmailRecap = ({ notes, aiSummary, roomCode }) => {
 // ─────────────────────────────────────────────────────────────
 //  STRIPE PAYMENT MODAL
 // ─────────────────────────────────────────────────────────────
-const StripeModal = ({ onClose }) => {
+// ─────────────────────────────────────────────────────────────
+//  PAYWALL MODAL — shown when free user tries premium feature
+// ─────────────────────────────────────────────────────────────
+const PLAN_FEATURES = {
+  hosting_poker:  { label:"Host Planning Poker",   icon:"🃏", plan:"Pro", desc:"Estimate stories in real-time with your whole team." },
+  hosting_retro:  { label:"Host Retrospectives",   icon:"🏁", plan:"Pro", desc:"Run structured retros with collect, vote and discuss phases." },
+  ai_coach:       { label:"AI Coach Summary",      icon:"✨", plan:"Pro", desc:"Get AI-generated sprint summaries and action items after every retro." },
+  email_recaps:   { label:"Email Recaps",           icon:"📧", plan:"Pro", desc:"Send recap emails to your whole team after every session." },
+  analytics:      { label:"Sprint Burndown Chart", icon:"📊", plan:"Pro", desc:"Track velocity, completion rates and sprint progress in real time." },
+  multi_workspace:{ label:"Multiple Workspaces",   icon:"🏢", plan:"Pro", desc:"Create unlimited workspaces for all your teams and projects." },
+};
+
+const PaywallModal = ({ feature, onClose, onUpgrade }) => {
+  const f = PLAN_FEATURES[feature] || { label:"This feature", icon:"💎", plan:"Pro", desc:"Upgrade to unlock the full power of SprintVibe." };
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:400,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d1c",border:"1px solid rgba(124,58,237,0.3)",borderRadius:22,padding:"32px 28px",maxWidth:400,width:"100%",textAlign:"center",boxShadow:"0 0 60px rgba(124,58,237,0.2)"}}>
+        <div style={{fontSize:44,marginBottom:12}}>{f.icon}</div>
+        <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:2,marginBottom:8}}>PRO FEATURE</div>
+        <div style={{fontFamily:"Syne",fontSize:20,fontWeight:800,color:"white",marginBottom:10}}>{f.label}</div>
+        <div style={{fontFamily:"DM Sans",fontSize:14,color:"#64748b",lineHeight:1.6,marginBottom:24}}>{f.desc}</div>
+
+        {/* What you get with Pro */}
+        <div style={{background:"rgba(124,58,237,0.08)",border:"1px solid rgba(124,58,237,0.2)",borderRadius:14,padding:"14px 16px",marginBottom:22,textAlign:"left"}}>
+          <div style={{fontFamily:"Syne",fontSize:10,color:"#7c3aed",letterSpacing:1,marginBottom:10}}>UNLOCK WITH PRO — $7/mo</div>
+          {["Host Poker & Retro sessions","AI coach summaries","Email recaps to your team","Unlimited workspaces","Sprint burndown analytics","Priority support"].map(f=>(
+            <div key={f} style={{display:"flex",gap:8,marginBottom:6,fontFamily:"DM Sans",fontSize:12,color:"#94a3b8"}}>
+              <span style={{color:"#7c3aed",flexShrink:0}}>✓</span>{f}
+            </div>
+          ))}
+        </div>
+
+        <button onClick={onUpgrade}
+          style={btn("linear-gradient(135deg,#7c3aed,#5b21b6)","white",{width:"100%",padding:"14px",fontSize:15,marginBottom:10,boxShadow:"0 6px 24px rgba(124,58,237,0.35)"})}>
+          💎 Upgrade to Pro — $7/mo
+        </button>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#334155",cursor:"pointer",fontFamily:"DM Sans",fontSize:13}}>
+          Maybe later — stay on free
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const StripeModal = ({ onClose, onUpgradePlan }) => {
   const [selected, setSelected] = useState(null);
   const [step, setStep] = useState("plans"); // plans | checkout | success
 
@@ -1830,23 +1889,47 @@ const StripeModal = ({ onClose }) => {
     team:      import.meta.env.VITE_STRIPE_LINK_TEAM      || "https://buy.stripe.com/test_team",
     corporate: import.meta.env.VITE_STRIPE_LINK_CORPORATE || "https://buy.stripe.com/test_corp",
   };
+  // Append redirect with plan ID so the app knows which plan was purchased
+  const getLink = (planId) => {
+    const base = PAYMENT_LINKS[planId] || "#";
+    return `${base}?prefilled_promo_code=&client_reference_id=${planId}`;
+  };
 
   const plans = [
-    { id:"pro",       name:"Pro",       price:"$7",  period:"/mo", color:"#7c3aed", hl:true,
-      desc:"Freelancers & small teams (≤5)",
-      features:["Unlimited projects","AI estimates unlimited","Notion/Jira export","Slack integration"] },
-    { id:"team",      name:"Team",      price:"$19", period:"/mo", color:"#ffd166",
-      desc:"Growing teams up to 20",
-      features:["Everything in Pro","20 members","Analytics","Priority support"] },
+    { id:"pro", name:"Pro", price:"$7", period:"/mo", color:"#7c3aed", hl:true,
+      desc:"Perfect for freelancers & small teams",
+      features:[
+        "Unlimited workspaces",
+        "Host Poker & Retro sessions",
+        "AI coach summaries",
+        "Email recaps to team",
+        "Sprint burndown analytics",
+        "Priority support",
+      ]},
+    { id:"team", name:"Team", price:"$19", period:"/mo", color:"#ffd166",
+      desc:"Growing teams up to 20 members",
+      features:[
+        "Everything in Pro",
+        "Up to 20 team members",
+        "Advanced analytics",
+        "Custom workflows",
+        "Session history & export",
+        "Dedicated onboarding",
+      ]},
     { id:"corporate", name:"Corporate", price:"$49", period:"/mo", color:"#ff4d6d",
-      desc:"Enterprise & agencies",
-      features:["Unlimited members","SSO / SAML","Custom branding","SLA guarantee"] },
+      desc:"Enterprise teams & agencies",
+      features:[
+        "Everything in Team",
+        "Unlimited members",
+        "SSO / SAML login",
+        "Custom branding",
+        "SLA guarantee",
+        "Dedicated success manager",
+      ]},
   ];
 
   const handleUpgrade = (plan) => {
-    const link = PAYMENT_LINKS[plan.id];
-    // Open Stripe checkout in a new tab
-    window.open(link, "_blank");
+    window.open(getLink(plan.id), "_blank");
     setSelected(plan);
     setStep("checkout");
   };
@@ -1906,16 +1989,25 @@ const StripeModal = ({ onClose }) => {
             <div style={{fontSize:40,marginBottom:16}}>🎉</div>
             <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:8}}>Welcome to {selected?.name}!</div>
             <div style={{fontFamily:"DM Sans",fontSize:14,color:"#64748b",lineHeight:1.6,marginBottom:24}}>
-              Your plan has been upgraded. Enjoy the full power of SprintVibe.
+              You now have full access to all {selected?.name} features.
             </div>
-            <button onClick={onClose} style={btn("#7c3aed","white",{padding:"13px 32px",fontSize:14})}>Start using {selected?.name} →</button>
+            <button onClick={()=>{ onUpgradePlan&&onUpgradePlan(selected?.id||"pro"); onClose(); }}
+              style={btn("#7c3aed","white",{padding:"13px 32px",fontSize:14})}>Start using {selected?.name} →</button>
           </div>
         </>)}
       </div>
     </div>
   );
 };
-const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifications, onDisableNotifications, notificationsEnabled, onToggleNotifications, onSignOut, onUpdateSession }) => {
+const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifications, onDisableNotifications, notificationsEnabled, onToggleNotifications, onSignOut, onUpdateSession, userPlan="free" }) => {
+
+  const PLAN_INFO = {
+    free:      { label:"Free",      color:"#06d6a0", icon:"🆓", desc:"1 workspace · Board only · Join sessions" },
+    pro:       { label:"Pro",       color:"#7c3aed", icon:"💎", desc:"Unlimited workspaces · All tools · AI coach" },
+    team:      { label:"Team",      color:"#ffd166", icon:"🏆", desc:"Up to 20 members · Analytics · Priority support" },
+    corporate: { label:"Corporate", color:"#ff4d6d", icon:"🏢", desc:"Unlimited · SSO · Custom branding · SLA" },
+  };
+  const plan = PLAN_INFO[userPlan] || PLAN_INFO.free;
   const [activeTab, setActiveTab] = useState("account");
   const [displayName, setDisplayName] = useState(session?.displayName || "");
   const [newPassword, setNewPassword] = useState("");
@@ -2081,23 +2173,28 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
           <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:18,marginBottom:14}}>
             <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>CURRENT PLAN</div>
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
-              <div style={{width:44,height:44,borderRadius:13,background:"rgba(6,214,160,0.15)",border:"1px solid rgba(6,214,160,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>🆓</div>
+              <div style={{width:44,height:44,borderRadius:13,background:`${plan.color}22`,border:`1px solid ${plan.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{plan.icon}</div>
               <div>
-                <div style={{fontFamily:"Syne",fontSize:15,fontWeight:700,color:"#06d6a0"}}>Solo Plan — Free</div>
-                <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569"}}>3 projects · 5 AI estimates/mo · QR join</div>
+                <div style={{fontFamily:"Syne",fontSize:15,fontWeight:700,color:plan.color}}>{plan.label} Plan</div>
+                <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569"}}>{plan.desc}</div>
               </div>
             </div>
-            <button onClick={onShowPricing} style={btn("#7c3aed","white",{width:"100%",padding:"13px",fontSize:14})}>💎 Upgrade Plan</button>
+            {userPlan==="free"
+              ? <button onClick={onShowPricing} style={btn("#7c3aed","white",{width:"100%",padding:"13px",fontSize:14})}>💎 Upgrade Plan</button>
+              : <div style={{background:"rgba(6,214,160,0.08)",border:"1px solid rgba(6,214,160,0.2)",borderRadius:10,padding:"10px 14px",textAlign:"center",fontFamily:"DM Sans",fontSize:13,color:"#06d6a0"}}>✓ You have full access to all {plan.label} features</div>
+            }
           </div>
 
-          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:18}}>
-            <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>WHAT YOU GET WITH PRO</div>
-            {["Unlimited projects & rooms","Unlimited AI coach estimates","Notion, Jira & Linear export","Slack integration","Custom room branding","Priority support"].map(f=>(
-              <div key={f} style={{display:"flex",gap:10,marginBottom:8,fontFamily:"DM Sans",fontSize:13,color:"#94a3b8"}}>
-                <span style={{color:"#7c3aed",flexShrink:0}}>✓</span>{f}
-              </div>
-            ))}
-          </div>
+          {userPlan==="free"&&(
+            <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:18}}>
+              <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>UNLOCK WITH PRO — $7/mo</div>
+              {["Host Poker & Retro sessions","AI coach summaries","Email recaps to team","Unlimited workspaces","Sprint burndown analytics","Priority support"].map(f=>(
+                <div key={f} style={{display:"flex",gap:10,marginBottom:8,fontFamily:"DM Sans",fontSize:13,color:"#94a3b8"}}>
+                  <span style={{color:"#7c3aed",flexShrink:0}}>✓</span>{f}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -2113,12 +2210,32 @@ export default function SprintVibe() {
   const [participants, setParticipants] = useState([]);
   const [workspace, setWorkspace] = useState(null);
   const [screen, setScreen]     = useState("landing");
-  const [signinMode, setSigninMode] = useState("welcome"); // controls which onboarding tab opens
+  const [signinMode, setSigninMode] = useState("welcome");
+  const [userPlan, setUserPlan] = useState(() => {
+    try { return localStorage.getItem("sv_plan") || "free"; } catch { return "free"; }
+  });
+  const [paywall, setPaywall] = useState(null); // feature key or null
   const { permission, requestPermission, notify } = usePushNotifications();
   const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
-    // Load saved preference — defaults to true if never set
     try { return localStorage.getItem("sv_notif_enabled") !== "false"; } catch { return true; }
   });
+
+  // Plan helpers
+  const isPro = ["pro","team","corporate"].includes(userPlan);
+  const isTeam = ["team","corporate"].includes(userPlan);
+  const upgradePlan = (plan) => {
+    setUserPlan(plan);
+    try { localStorage.setItem("sv_plan", plan); } catch {}
+  };
+
+  // Gate a feature — returns true if allowed, false + shows paywall if not
+  const canUse = (feature) => {
+    if (isPro) return true;
+    // Free users can JOIN sessions but not HOST poker/retro
+    if ((feature === "hosting_poker" || feature === "hosting_retro") && session?.role !== "host") return true;
+    setPaywall(feature);
+    return false;
+  };
 
   // Smart notify — respects the toggle
   const smartNotify = (title, body) => {
@@ -2157,6 +2274,16 @@ export default function SprintVibe() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("join")) { setScreen("onboarding"); return; }
+
+    // Detect Stripe redirect after payment
+    const upgraded = params.get("upgraded");
+    if (upgraded && ["pro","team","corporate"].includes(upgraded)) {
+      upgradePlan(upgraded);
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (params.get("upgraded") === "true") {
+      upgradePlan("pro"); // default to pro if no plan specified
+      window.history.replaceState({}, "", window.location.pathname);
+    }
 
     // Detect password reset link — Supabase puts token in URL hash
     const hash = window.location.hash;
@@ -2323,10 +2450,10 @@ export default function SprintVibe() {
   const prog    = allPts ? Math.round(donePts/allPts*100) : 0;
 
   const TABS = [
-    { id:"board",     l:"📋 Board"     },
-    { id:"poker",     l:"🃏 Poker"     },
-    { id:"retro",     l:"🏁 Retro"     },
-    { id:"analytics", l:"📊 Analytics" },
+    { id:"board",     l:"📋 Board"                                          },
+    { id:"poker",     l: session?.role==="host"&&!isPro ? "🃏 Poker 🔒" : "🃏 Poker"     },
+    { id:"retro",     l: session?.role==="host"&&!isPro ? "🏁 Retro 🔒" : "🏁 Retro"     },
+    { id:"analytics", l:!isPro ? "📊 Analytics 🔒" : "📊 Analytics"        },
   ];
 
   const STYLES = `*{-webkit-tap-highlight-color:transparent;}body{margin:0;background:#08080f;}@keyframes pulse{0%,100%{opacity:0.4}50%{opacity:1}}@keyframes flipIn{from{opacity:0;transform:rotateY(90deg)}to{opacity:1;transform:rotateY(0)}}@keyframes slideUp{from{opacity:0;transform:translateX(-50%) translateY(12px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}@keyframes noteIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}select option{background:#0d0d1c}::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-thumb{background:rgba(124,58,237,0.3);border-radius:2px}input,textarea,select{-webkit-appearance:none;}`;
@@ -2469,8 +2596,11 @@ export default function SprintVibe() {
         <div style={{padding:"12px 16px 0",display:"flex",gap:3,overflowX:"auto"}}>
           {TABS.map(t=>(
             <button key={t.id} onClick={async()=>{
+                // Paywall checks for free users hosting premium features
+                if (t.id === "poker"    && session?.role === "host" && !canUse("hosting_poker"))  return;
+                if (t.id === "retro"    && session?.role === "host" && !canUse("hosting_retro"))  return;
+                if (t.id === "analytics" && !canUse("analytics")) return;
                 setTab(t.id);
-                // Notify participants when host starts poker or retro
                 if(session?.role==="host" && (t.id==="poker"||t.id==="retro") && session?.room?.id) {
                   const label = t.id==="poker"?"Planning Poker 🃏":"Retrospective 🏁";
                   await broadcastNotification(session.room.id,"session_started",{host:session.displayName,activity:label,userId:session.userId}).catch(()=>{});
@@ -2513,13 +2643,20 @@ export default function SprintVibe() {
           </div>
         )}
         {tab==="poker"     &&<PokerSession  stories={stories} session={session} roomUrl={roomUrl}/>}
-        {tab==="retro"     &&<RetroView     session={session} roomUrl={roomUrl}/>}
+        {tab==="retro"     &&<RetroView     session={session} roomUrl={roomUrl} isPro={isPro} onPaywall={setPaywall}/>}
         {tab==="analytics" &&<AnalyticsView stories={stories} session={session}/>}
 
         {/* Modals */}
-        {modal==="pricing"  &&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/> }
+        {modal==="pricing"  &&<PricingModal onClose={()=>setModal(null)} onUpgrade={(planId)=>setModal("stripe")}/> }
         {modal==="share"    &&<ShareModal session={session} roomUrl={roomUrl} onClose={()=>setModal(null)}/>}
-        {modal==="stripe"   &&<StripeModal onClose={()=>setModal(null)}/>}
+        {modal==="stripe"   &&<StripeModal onClose={()=>setModal(null)} onUpgradePlan={upgradePlan}/>}
+
+        {/* Paywall modal — shown when free user tries premium feature */}
+        {paywall&&<PaywallModal
+          feature={paywall}
+          onClose={()=>setPaywall(null)}
+          onUpgrade={()=>{ setPaywall(null); setModal("stripe"); }}
+        />}
         {modal==="settings" &&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:300,display:"flex",justifyContent:"flex-end"}} onClick={()=>setModal(null)}>
             <div onClick={e=>e.stopPropagation()} style={{width:"min(420px,100vw)",height:"100vh",background:"#0d0d1c",borderLeft:"1px solid rgba(255,255,255,0.07)",overflowY:"auto"}}>
@@ -2537,6 +2674,7 @@ export default function SprintVibe() {
                 onDisableNotifications={()=>setNotificationsEnabled(false)}
                 onSignOut={handleSignOut}
                 onUpdateSession={handleUpdateSession}
+                userPlan={userPlan}
               />
             </div>
           </div>
