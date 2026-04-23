@@ -1052,23 +1052,24 @@ const ShareModal = ({ session, roomUrl, onClose }) => {
   );
 };
 // ─────────────────────────────────────────────────────────────
-//  PUSH NOTIFICATIONS HOOK
+//  PUSH NOTIFICATIONS HOOK — safe on all browsers including iOS Safari
 // ─────────────────────────────────────────────────────────────
 const usePushNotifications = () => {
-  const [permission, setPermission] = useState(Notification?.permission || "default");
+  const supported = typeof window !== "undefined" && "Notification" in window;
+  const [permission, setPermission] = useState(supported ? Notification.permission : "denied");
 
   const requestPermission = async () => {
-    if (!("Notification" in window)) return;
-    const result = await Notification.requestPermission();
-    setPermission(result);
-    return result;
+    if (!supported) return "denied";
+    try {
+      const result = await Notification.requestPermission();
+      setPermission(result);
+      return result;
+    } catch(e) { return "denied"; }
   };
 
   const notify = (title, body, icon="/favicon.svg") => {
-    if (permission !== "granted") return;
-    try {
-      new Notification(title, { body, icon });
-    } catch(e) {}
+    if (!supported || permission !== "granted") return;
+    try { new Notification(title, { body, icon }); } catch(e) {}
   };
 
   return { permission, requestPermission, notify };
