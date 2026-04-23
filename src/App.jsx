@@ -1818,7 +1818,10 @@ export default function SprintVibe() {
   const [workspace, setWorkspace] = useState(null);
   const [screen, setScreen]     = useState("landing");
   const { permission, requestPermission, notify } = usePushNotifications();
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
+    // Load saved preference — defaults to true if never set
+    try { return localStorage.getItem("sv_notif_enabled") !== "false"; } catch { return true; }
+  });
 
   // Smart notify — respects the toggle
   const smartNotify = (title, body) => {
@@ -1827,15 +1830,17 @@ export default function SprintVibe() {
 
   const handleToggleNotifications = async () => {
     if (notificationsEnabled) {
-      // Simply turn off — always works
+      // Turn off — save permanently
       setNotificationsEnabled(false);
+      try { localStorage.setItem("sv_notif_enabled", "false"); } catch {}
     } else {
-      // Turning on — request permission if not yet granted
+      // Turn on — request browser permission if needed
       if (permission !== "granted") {
         const result = await requestPermission();
-        if (result !== "granted") return; // browser blocked it
+        if (result !== "granted") return;
       }
       setNotificationsEnabled(true);
+      try { localStorage.setItem("sv_notif_enabled", "true"); } catch {}
     }
   };
 
@@ -1892,6 +1897,23 @@ export default function SprintVibe() {
     setStories({ backlog:[], sprint:[], in_progress:[], done:[] });
     setScreen("landing");
     try { localStorage.removeItem("sprintvibe_session"); } catch(e) {}
+  };
+
+  const handleSignOut = async () => {
+    // Leave room if in one
+    if (session?.room?.id) await leaveRoom(session.room.id, session.userId).catch(()=>{});
+    // Sign out of Supabase auth
+    await signOut().catch(()=>{});
+    // Clear all local storage
+    try {
+      localStorage.removeItem("sprintvibe_session");
+      localStorage.removeItem("sv_notif_enabled");
+    } catch(e) {}
+    // Reset all state
+    setSession(null);
+    setStories({ backlog:[], sprint:[], in_progress:[], done:[] });
+    setParticipants([]);
+    setScreen("landing");
   };
 
   // ── Story handlers — all synced to Supabase ──────────────
@@ -2091,7 +2113,8 @@ export default function SprintVibe() {
               <span style={{fontFamily:"DM Sans",fontSize:12,color:"#e2e8f0"}}>{session.displayName}</span>
               {session.role==="host"&&<span style={{fontFamily:"Syne",fontSize:9,color:"#7c3aed",background:"rgba(124,58,237,0.15)",borderRadius:4,padding:"1px 5px"}}>HOST</span>}
             </div>
-            <button onClick={handleLeave} style={btn("rgba(255,77,109,0.15)","#ff4d6d",{padding:"6px 12px",fontSize:11})}>Leave</button>
+            <button onClick={handleLeave} style={btn("rgba(255,255,255,0.06)","#64748b",{padding:"6px 12px",fontSize:11})}>Leave Room</button>
+            <button onClick={handleSignOut} style={btn("rgba(255,77,109,0.15)","#ff4d6d",{padding:"6px 12px",fontSize:11})}>Sign Out</button>
           </div>
         </div>
 
@@ -2153,7 +2176,7 @@ export default function SprintVibe() {
           onToggleNotifications={handleToggleNotifications}
           onEnableNotifications={requestPermission}
           onDisableNotifications={()=>setNotificationsEnabled(false)}
-          onSignOut={handleLeave}
+          onSignOut={handleSignOut}
           onUpdateSession={handleUpdateSession}
         />}
 
