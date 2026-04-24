@@ -949,8 +949,8 @@ const KanbanCard = ({ story, columnId, onDrop, onDelete, onEdit, participants=[]
   const [dragging, setDragging] = useState(false);
   const [showDel, setShowDel]   = useState(false);
   const [editing, setEditing]   = useState(false);
-  const [form, setForm]         = useState({ title:story.title||"", description:story.description||"", priority:story.priority||"medium", tags:(story.tags||[]).join(", "), assignee:story.assignee||"" });
-  const PC      = { high:"#ff4d6d", medium:"#ffd166", low:"#06d6a0" };
+  const [form, setForm] = useState({ title:story.title||"", description:story.description||"", priority:story.priority||"medium", tags:(story.tags||[]).join(", "), assignee:story.assignee||"" });
+  const PC = { high:"#ff4d6d", medium:"#ffd166", low:"#06d6a0" };
   const cardRef = useRef(null);
   const ghostRef = useRef(null);
   const touchRef = useRef(null);
@@ -958,31 +958,59 @@ const KanbanCard = ({ story, columnId, onDrop, onDelete, onEdit, participants=[]
 
   const submitEdit = () => {
     if (!form.title.trim()) return;
-    onEdit?.(story.id, columnId, {
-      ...story,
-      title: form.title.trim(),
-      description: form.description.trim(),
-      priority: form.priority,
-      tags: form.tags.split(",").map(t=>t.trim()).filter(Boolean),
-      assignee: form.assignee || null,
-    });
+    onEdit?.(story.id, columnId, { ...story, title:form.title.trim(), description:form.description.trim(), priority:form.priority, tags:form.tags.split(",").map(t=>t.trim()).filter(Boolean), assignee:form.assignee||null });
     setEditing(false);
   };
 
-  // ── Edit mode ─────────────────────────────────────────────
+  const onTouchStart = (e) => {
+    const touch = e.touches[0];
+    const rect = cardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    touchRef.current = { offsetX:touch.clientX-rect.left, offsetY:touch.clientY-rect.top, moved:false };
+    touchRef.current.timer = setTimeout(() => {
+      if (!touchRef.current) return;
+      setDragging(true);
+      const ghost = cardRef.current.cloneNode(true);
+      Object.assign(ghost.style, { position:"fixed", width:rect.width+"px", opacity:"0.9", pointerEvents:"none", zIndex:"9999", left:(touch.clientX-touchRef.current.offsetX)+"px", top:(touch.clientY-touchRef.current.offsetY)+"px", borderColor:"#7c3aed", background:"rgba(124,58,237,0.25)", transform:"rotate(2deg) scale(1.04)", boxShadow:"0 20px 60px rgba(0,0,0,0.6)", transition:"none", borderRadius:"12px" });
+      document.body.appendChild(ghost);
+      ghostRef.current = ghost;
+    }, 180);
+  };
+
+  const onTouchMove = (e) => {
+    if (!touchRef.current) return;
+    touchRef.current.moved = true;
+    if (!ghostRef.current) { clearTimeout(touchRef.current.timer); return; }
+    e.preventDefault();
+    const touch = e.touches[0];
+    ghostRef.current.style.left = (touch.clientX-touchRef.current.offsetX)+"px";
+    ghostRef.current.style.top  = (touch.clientY-touchRef.current.offsetY)+"px";
+    document.querySelectorAll("[data-col]").forEach(col => {
+      const r = col.getBoundingClientRect();
+      const over = touch.clientX>=r.left&&touch.clientX<=r.right&&touch.clientY>=r.top&&touch.clientY<=r.bottom;
+      col.style.borderColor = over?"#7c3aed":""; col.style.background = over?"rgba(124,58,237,0.12)":"";
+    });
+  };
+
+  const onTouchEnd = (e) => {
+    clearTimeout(touchRef.current?.timer);
+    document.querySelectorAll("[data-col]").forEach(col=>{ col.style.borderColor=""; col.style.background=""; });
+    if (ghostRef.current) { ghostRef.current.remove(); ghostRef.current=null; }
+    setDragging(false);
+    if (!touchRef.current?.moved) { touchRef.current=null; return; }
+    const touch = e.changedTouches[0];
+    const col = document.elementFromPoint(touch.clientX, touch.clientY)?.closest("[data-col]");
+    if (col && col.dataset.col!==columnId) onDrop(story.id, columnId, col.dataset.col);
+    touchRef.current = null;
+  };
+
   if (editing) return (
     <div style={{background:"rgba(124,58,237,0.1)",border:"1.5px solid #7c3aed",borderRadius:12,padding:13,marginBottom:9}}>
-      <input autoFocus value={form.title} onChange={e=>set("title",e.target.value)}
-        placeholder="Story title *"
-        style={{...inp(),marginBottom:8,fontSize:13}}/>
-      <textarea value={form.description} onChange={e=>set("description",e.target.value)}
-        placeholder="Description…" rows={2}
-        style={{...inp(),resize:"none",marginBottom:8,fontSize:12}}/>
+      <input autoFocus value={form.title} onChange={e=>set("title",e.target.value)} placeholder="Story title *" style={{...inp(),marginBottom:8,fontSize:13}}/>
+      <textarea value={form.description} onChange={e=>set("description",e.target.value)} placeholder="Description…" rows={2} style={{...inp(),resize:"none",marginBottom:8,fontSize:12}}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:8}}>
         <select value={form.priority} onChange={e=>set("priority",e.target.value)} style={{...inp(),padding:"6px 8px",fontSize:11}}>
-          <option value="high">🔴 High</option>
-          <option value="medium">🟡 Medium</option>
-          <option value="low">🟢 Low</option>
+          <option value="high">🔴 High</option><option value="medium">🟡 Medium</option><option value="low">🟢 Low</option>
         </select>
         <input value={form.tags} onChange={e=>set("tags",e.target.value)} placeholder="tags, comma, separated" style={{...inp(),padding:"6px 8px",fontSize:11}}/>
       </div>
@@ -999,188 +1027,21 @@ const KanbanCard = ({ story, columnId, onDrop, onDelete, onEdit, participants=[]
     </div>
   );
 
-  // ── Touch drag ───────────────────────────────────────────
-  const onTouchStart = (e) => {
-    const touch = e.touches[0];
-    const rect  = cardRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    touchRef.current = {
-      offsetX: touch.clientX - rect.left,
-      offsetY: touch.clientY - rect.top,
-      moved: false,
-    };
-    touchRef.current.timer = setTimeout(() => {
-      if (!touchRef.current) return;
-      setDragging(true);
-      const ghost = cardRef.current.cloneNode(true);
-      Object.assign(ghost.style, {
-        position:"fixed", width:rect.width+"px", opacity:"0.9",
-        pointerEvents:"none", zIndex:"9999",
-        left:(touch.clientX - touchRef.current.offsetX)+"px",
-        top:(touch.clientY - touchRef.current.offsetY)+"px",
-        borderColor:"#7c3aed", background:"rgba(124,58,237,0.25)",
-        transform:"rotate(2deg) scale(1.04)",
-        boxShadow:"0 20px 60px rgba(0,0,0,0.6)",
-        transition:"none", borderRadius:"12px",
-      });
-      document.body.appendChild(ghost);
-      ghostRef.current = ghost;
-    }, 180);
-  };
-
-  const onTouchMove = (e) => {
-    if (!touchRef.current) return;
-    touchRef.current.moved = true;
-    if (!ghostRef.current) { clearTimeout(touchRef.current.timer); return; }
-    e.preventDefault();
-    const touch = e.touches[0];
-    ghostRef.current.style.left = (touch.clientX - touchRef.current.offsetX) + "px";
-    ghostRef.current.style.top  = (touch.clientY - touchRef.current.offsetY) + "px";
-    document.querySelectorAll("[data-col]").forEach(col => {
-      const r = col.getBoundingClientRect();
-      const over = touch.clientX >= r.left && touch.clientX <= r.right &&
-                   touch.clientY >= r.top  && touch.clientY <= r.bottom;
-      col.style.borderColor  = over ? "#7c3aed" : "";
-      col.style.background   = over ? "rgba(124,58,237,0.12)" : "";
-    });
-  };
-
-  const onTouchEnd = (e) => {
-    clearTimeout(touchRef.current?.timer);
-    document.querySelectorAll("[data-col]").forEach(col => {
-      col.style.borderColor = ""; col.style.background = "";
-    });
-    if (ghostRef.current) { ghostRef.current.remove(); ghostRef.current = null; }
-    setDragging(false);
-    if (!touchRef.current?.moved) { touchRef.current = null; return; }
-    const touch = e.changedTouches[0];
-    const col = document.elementFromPoint(touch.clientX, touch.clientY)?.closest("[data-col]");
-    if (col && col.dataset.col !== columnId) onDrop(story.id, columnId, col.dataset.col);
-    touchRef.current = null;
-  };
-
-  return(
-    <div ref={cardRef}
-      draggable
-      onDragStart={e=>{ setDragging(true); e.dataTransfer.setData("cid",story.id); e.dataTransfer.setData("from",columnId); }}
+  return (
+    <div ref={cardRef} draggable
+      onDragStart={e=>{setDragging(true);e.dataTransfer.setData("cid",story.id);e.dataTransfer.setData("from",columnId);}}
       onDragEnd={()=>setDragging(false)}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-      onMouseEnter={()=>setShowDel(true)}
-      onMouseLeave={()=>setShowDel(false)}
+      onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+      onMouseEnter={()=>setShowDel(true)} onMouseLeave={()=>setShowDel(false)}
       style={{background:dragging?"rgba(124,58,237,0.14)":"rgba(255,255,255,0.06)",border:`1px solid ${dragging?"#7c3aed":"rgba(255,255,255,0.09)"}`,borderRadius:12,padding:"11px 13px",marginBottom:9,cursor:"grab",opacity:dragging?0.4:1,transition:"opacity 0.18s",userSelect:"none",touchAction:"none",position:"relative"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
         <span style={{width:7,height:7,borderRadius:"50%",background:PC[story.priority]||"#888",flexShrink:0}}/>
         <span style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",fontWeight:500,flex:1,lineHeight:1.3}}>{story.title}</span>
-        {story.points
-          ? <span style={{background:"#7c3aed",color:"white",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,fontFamily:"Syne"}}>{story.points}</span>
-          : <span style={{background:"rgba(255,255,255,0.05)",color:"#475569",borderRadius:6,padding:"2px 7px",fontSize:10}}>–</span>}
-        {showDel&&(
-          <div style={{display:"flex",gap:4,flexShrink:0}}>
-            <button onClick={e=>{e.stopPropagation();setEditing(true);}}
-              style={{width:20,height:20,borderRadius:5,border:"none",background:"rgba(124,58,237,0.25)",color:"#a78bfa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11}}
-              title="Edit">✎</button>
-            {onDelete&&<button onClick={e=>{e.stopPropagation();onDelete(story.id,columnId);}}
-              style={{width:20,height:20,borderRadius:5,border:"none",background:"rgba(255,77,109,0.25)",color:"#ff4d6d",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,lineHeight:1}}
-              title="Remove">×</button>}
-          </div>
-        )}
-      </div>
-      {story.description&&<div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:5,lineHeight:1.4}}>{story.description}</div>}
-      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
-        {story.tags?.map(t=><span key={t} style={{background:"rgba(255,255,255,0.05)",borderRadius:4,padding:"1px 6px",fontSize:10,color:"#64748b"}}>{t}</span>)}
-        {story.assignee&&<span style={{background:"rgba(124,58,237,0.15)",borderRadius:4,padding:"1px 7px",fontSize:10,color:"#a78bfa",marginLeft:"auto"}}>👤 {story.assignee}</span>}
-      </div>
-    </div>
-  );
-};
-
-  // ── Touch drag ───────────────────────────────────────────
-  const onTouchStart = (e) => {
-    const touch = e.touches[0];
-    const rect  = cardRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    touchRef.current = {
-      offsetX: touch.clientX - rect.left,
-      offsetY: touch.clientY - rect.top,
-      moved: false,
-    };
-    // Short delay so quick taps don't trigger drag
-    touchRef.current.timer = setTimeout(() => {
-      if (!touchRef.current) return;
-      setDragging(true);
-      const ghost = cardRef.current.cloneNode(true);
-      Object.assign(ghost.style, {
-        position:"fixed", width:rect.width+"px", opacity:"0.9",
-        pointerEvents:"none", zIndex:"9999",
-        left:(touch.clientX - touchRef.current.offsetX)+"px",
-        top:(touch.clientY - touchRef.current.offsetY)+"px",
-        borderColor:"#7c3aed", background:"rgba(124,58,237,0.25)",
-        transform:"rotate(2deg) scale(1.04)",
-        boxShadow:"0 20px 60px rgba(0,0,0,0.6)",
-        transition:"none", borderRadius:"12px",
-      });
-      document.body.appendChild(ghost);
-      ghostRef.current = ghost;
-    }, 180);
-  };
-
-  const onTouchMove = (e) => {
-    if (!touchRef.current) return;
-    touchRef.current.moved = true;
-    if (!ghostRef.current) { clearTimeout(touchRef.current.timer); return; }
-    e.preventDefault();
-    const touch = e.touches[0];
-    ghostRef.current.style.left = (touch.clientX - touchRef.current.offsetX) + "px";
-    ghostRef.current.style.top  = (touch.clientY - touchRef.current.offsetY) + "px";
-    // Highlight drop targets
-    document.querySelectorAll("[data-col]").forEach(col => {
-      const r = col.getBoundingClientRect();
-      const over = touch.clientX >= r.left && touch.clientX <= r.right &&
-                   touch.clientY >= r.top  && touch.clientY <= r.bottom;
-      col.style.borderColor  = over ? "#7c3aed" : "";
-      col.style.background   = over ? "rgba(124,58,237,0.12)" : "";
-    });
-  };
-
-  const onTouchEnd = (e) => {
-    clearTimeout(touchRef.current?.timer);
-    // Reset column highlights
-    document.querySelectorAll("[data-col]").forEach(col => {
-      col.style.borderColor = ""; col.style.background = "";
-    });
-    if (ghostRef.current) { ghostRef.current.remove(); ghostRef.current = null; }
-    setDragging(false);
-    if (!touchRef.current?.moved) { touchRef.current = null; return; }
-    const touch = e.changedTouches[0];
-    const col = document.elementFromPoint(touch.clientX, touch.clientY)?.closest("[data-col]");
-    if (col && col.dataset.col !== columnId) onDrop(story.id, columnId, col.dataset.col);
-    touchRef.current = null;
-  };
-
-  return(
-    <div ref={cardRef}
-      draggable
-      onDragStart={e=>{ setDragging(true); e.dataTransfer.setData("cid",story.id); e.dataTransfer.setData("from",columnId); }}
-      onDragEnd={()=>setDragging(false)}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-      onMouseEnter={()=>setShowDel(true)}
-      onMouseLeave={()=>setShowDel(false)}
-      style={{background:dragging?"rgba(124,58,237,0.14)":"rgba(255,255,255,0.06)",border:`1px solid ${dragging?"#7c3aed":"rgba(255,255,255,0.09)"}`,borderRadius:12,padding:"11px 13px",marginBottom:9,cursor:"grab",opacity:dragging?0.4:1,transition:"opacity 0.18s",userSelect:"none",touchAction:"none",position:"relative"}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
-        <span style={{width:7,height:7,borderRadius:"50%",background:PC[story.priority]||"#888",flexShrink:0}}/>
-        <span style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",fontWeight:500,flex:1,lineHeight:1.3}}>{story.title}</span>
-        {story.points
-          ? <span style={{background:"#7c3aed",color:"white",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,fontFamily:"Syne"}}>{story.points}</span>
-          : <span style={{background:"rgba(255,255,255,0.05)",color:"#475569",borderRadius:6,padding:"2px 7px",fontSize:10}}>–</span>}
-        {showDel&&onDelete&&(
-          <button onClick={e=>{e.stopPropagation();onDelete(story.id,columnId);}}
-            style={{width:20,height:20,borderRadius:5,border:"none",background:"rgba(255,77,109,0.25)",color:"#ff4d6d",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,lineHeight:1,flexShrink:0}}
-            title="Remove story">×</button>
-        )}
+        {story.points?<span style={{background:"#7c3aed",color:"white",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,fontFamily:"Syne"}}>{story.points}</span>:<span style={{background:"rgba(255,255,255,0.05)",color:"#475569",borderRadius:6,padding:"2px 7px",fontSize:10}}>–</span>}
+        {showDel&&(<div style={{display:"flex",gap:4,flexShrink:0}}>
+          <button onClick={e=>{e.stopPropagation();setEditing(true);}} style={{width:20,height:20,borderRadius:5,border:"none",background:"rgba(124,58,237,0.25)",color:"#a78bfa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11}} title="Edit">✎</button>
+          {onDelete&&<button onClick={e=>{e.stopPropagation();onDelete(story.id,columnId);}} style={{width:20,height:20,borderRadius:5,border:"none",background:"rgba(255,77,109,0.25)",color:"#ff4d6d",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,lineHeight:1}} title="Delete">×</button>}
+        </div>)}
       </div>
       {story.description&&<div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:5,lineHeight:1.4}}>{story.description}</div>}
       <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
