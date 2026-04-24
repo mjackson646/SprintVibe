@@ -144,26 +144,20 @@ export const broadcastNotification = async (roomId, event, payload) => {
   await supabase.channel(`notify:${roomId}`).send({ type: 'broadcast', event, payload })
 }
 
-export const sendRetroRecap = async ({ to, roomCode, notes, actions, summary }) => {
-  const resendKey = import.meta.env.VITE_RESEND_API_KEY
-  if (!resendKey) return
-  const actionsList = actions.map((a, i) => `${i+1}. ${a}`).join('\n')
-  const wentWell = notes.went_well?.map(n => `• ${n.text}`).join('\n') || 'None'
-  const improve  = notes.improve?.map(n => `• ${n.text}`).join('\n') || 'None'
-  await fetch('https://api.resend.com/emails', {
+export const sendRetroRecap = async ({ to, roomCode, notes, actions, summary, templateKey }) => {
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch(`${supabaseUrl}/functions/v1/send-recap`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from: 'SprintVibe Recaps <recap@sprintvibe.io>',
-      to, subject: `Sprint Retro Recap — Room ${roomCode}`,
-      html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px">
-        <h1 style="color:#a78bfa">SprintVibe</h1>
-        <p>Room: ${roomCode}</p>
-        ${summary ? `<p>${summary}</p>` : ''}
-        <h3>✅ Went Well</h3><p style="white-space:pre-line">${wentWell}</p>
-        <h3>🔧 To Improve</h3><p style="white-space:pre-line">${improve}</p>
-        <h3>⚡ Action Items</h3><p style="white-space:pre-line;font-weight:bold">${actionsList}</p>
-      </div>`
-    })
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': supabaseKey,
+      ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+    },
+    body: JSON.stringify({ to, roomCode, notes, actions, summary, templateKey }),
   })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || 'Failed to send recap')
+  }
+  return res.json()
 }
