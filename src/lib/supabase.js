@@ -144,16 +144,13 @@ export const broadcastNotification = async (roomId, event, payload) => {
   await supabase.channel(`notify:${roomId}`).send({ type: 'broadcast', event, payload })
 }
 
-export const sendRetroRecap = async ({ to, roomCode, notes, actions, summary, templateKey }) => {
-  const { data: { session } } = await supabase.auth.getSession()
+export const sendRetroRecap = async ({ to, roomCode, notes, actions, summary }) => {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
   const res = await fetch(`${supabaseUrl}/functions/v1/send-recap`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': supabaseKey,
-      ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
-    },
-    body: JSON.stringify({ to, roomCode, notes, actions, summary, templateKey }),
+    headers: { 'Content-Type': 'application/json', 'apikey': supabaseKey },
+    body: JSON.stringify({ to, roomCode, notes, actions, summary }),
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
