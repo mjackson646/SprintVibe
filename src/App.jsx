@@ -945,13 +945,156 @@ const Onboarding = ({ onEnter, initialMode="welcome" }) => {
 // ─────────────────────────────────────────────────────────────
 //  KANBAN CARD
 // ─────────────────────────────────────────────────────────────
-const KanbanCard = ({ story, columnId, onDrop, onDelete }) => {
+const KanbanCard = ({ story, columnId, onDrop, onDelete, onEdit, participants=[] }) => {
   const [dragging, setDragging] = useState(false);
   const [showDel, setShowDel]   = useState(false);
+  const [editing, setEditing]   = useState(false);
+  const [form, setForm]         = useState({ title:story.title||"", description:story.description||"", priority:story.priority||"medium", tags:(story.tags||[]).join(", "), assignee:story.assignee||"" });
   const PC      = { high:"#ff4d6d", medium:"#ffd166", low:"#06d6a0" };
   const cardRef = useRef(null);
   const ghostRef = useRef(null);
   const touchRef = useRef(null);
+  const set = (k,v) => setForm(f=>({...f,[k]:v}));
+
+  const submitEdit = () => {
+    if (!form.title.trim()) return;
+    onEdit?.(story.id, columnId, {
+      ...story,
+      title: form.title.trim(),
+      description: form.description.trim(),
+      priority: form.priority,
+      tags: form.tags.split(",").map(t=>t.trim()).filter(Boolean),
+      assignee: form.assignee || null,
+    });
+    setEditing(false);
+  };
+
+  // ── Edit mode ─────────────────────────────────────────────
+  if (editing) return (
+    <div style={{background:"rgba(124,58,237,0.1)",border:"1.5px solid #7c3aed",borderRadius:12,padding:13,marginBottom:9}}>
+      <input autoFocus value={form.title} onChange={e=>set("title",e.target.value)}
+        placeholder="Story title *"
+        style={{...inp(),marginBottom:8,fontSize:13}}/>
+      <textarea value={form.description} onChange={e=>set("description",e.target.value)}
+        placeholder="Description…" rows={2}
+        style={{...inp(),resize:"none",marginBottom:8,fontSize:12}}/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:7,marginBottom:8}}>
+        <select value={form.priority} onChange={e=>set("priority",e.target.value)} style={{...inp(),padding:"6px 8px",fontSize:11}}>
+          <option value="high">🔴 High</option>
+          <option value="medium">🟡 Medium</option>
+          <option value="low">🟢 Low</option>
+        </select>
+        <input value={form.tags} onChange={e=>set("tags",e.target.value)} placeholder="tags, comma, separated" style={{...inp(),padding:"6px 8px",fontSize:11}}/>
+      </div>
+      {participants.length>0&&(
+        <select value={form.assignee} onChange={e=>set("assignee",e.target.value)} style={{...inp(),padding:"6px 8px",fontSize:11,marginBottom:8,width:"100%"}}>
+          <option value="">Unassigned</option>
+          {participants.map(p=><option key={p.id} value={p.display_name}>{p.display_name}</option>)}
+        </select>
+      )}
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={submitEdit} style={btn("#7c3aed","white",{flex:1,padding:"7px",fontSize:12})}>✓ Save</button>
+        <button onClick={()=>setEditing(false)} style={btn("rgba(255,255,255,0.06)","#64748b",{padding:"7px 12px",fontSize:12})}>✕</button>
+      </div>
+    </div>
+  );
+
+  // ── Touch drag ───────────────────────────────────────────
+  const onTouchStart = (e) => {
+    const touch = e.touches[0];
+    const rect  = cardRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    touchRef.current = {
+      offsetX: touch.clientX - rect.left,
+      offsetY: touch.clientY - rect.top,
+      moved: false,
+    };
+    touchRef.current.timer = setTimeout(() => {
+      if (!touchRef.current) return;
+      setDragging(true);
+      const ghost = cardRef.current.cloneNode(true);
+      Object.assign(ghost.style, {
+        position:"fixed", width:rect.width+"px", opacity:"0.9",
+        pointerEvents:"none", zIndex:"9999",
+        left:(touch.clientX - touchRef.current.offsetX)+"px",
+        top:(touch.clientY - touchRef.current.offsetY)+"px",
+        borderColor:"#7c3aed", background:"rgba(124,58,237,0.25)",
+        transform:"rotate(2deg) scale(1.04)",
+        boxShadow:"0 20px 60px rgba(0,0,0,0.6)",
+        transition:"none", borderRadius:"12px",
+      });
+      document.body.appendChild(ghost);
+      ghostRef.current = ghost;
+    }, 180);
+  };
+
+  const onTouchMove = (e) => {
+    if (!touchRef.current) return;
+    touchRef.current.moved = true;
+    if (!ghostRef.current) { clearTimeout(touchRef.current.timer); return; }
+    e.preventDefault();
+    const touch = e.touches[0];
+    ghostRef.current.style.left = (touch.clientX - touchRef.current.offsetX) + "px";
+    ghostRef.current.style.top  = (touch.clientY - touchRef.current.offsetY) + "px";
+    document.querySelectorAll("[data-col]").forEach(col => {
+      const r = col.getBoundingClientRect();
+      const over = touch.clientX >= r.left && touch.clientX <= r.right &&
+                   touch.clientY >= r.top  && touch.clientY <= r.bottom;
+      col.style.borderColor  = over ? "#7c3aed" : "";
+      col.style.background   = over ? "rgba(124,58,237,0.12)" : "";
+    });
+  };
+
+  const onTouchEnd = (e) => {
+    clearTimeout(touchRef.current?.timer);
+    document.querySelectorAll("[data-col]").forEach(col => {
+      col.style.borderColor = ""; col.style.background = "";
+    });
+    if (ghostRef.current) { ghostRef.current.remove(); ghostRef.current = null; }
+    setDragging(false);
+    if (!touchRef.current?.moved) { touchRef.current = null; return; }
+    const touch = e.changedTouches[0];
+    const col = document.elementFromPoint(touch.clientX, touch.clientY)?.closest("[data-col]");
+    if (col && col.dataset.col !== columnId) onDrop(story.id, columnId, col.dataset.col);
+    touchRef.current = null;
+  };
+
+  return(
+    <div ref={cardRef}
+      draggable
+      onDragStart={e=>{ setDragging(true); e.dataTransfer.setData("cid",story.id); e.dataTransfer.setData("from",columnId); }}
+      onDragEnd={()=>setDragging(false)}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onMouseEnter={()=>setShowDel(true)}
+      onMouseLeave={()=>setShowDel(false)}
+      style={{background:dragging?"rgba(124,58,237,0.14)":"rgba(255,255,255,0.06)",border:`1px solid ${dragging?"#7c3aed":"rgba(255,255,255,0.09)"}`,borderRadius:12,padding:"11px 13px",marginBottom:9,cursor:"grab",opacity:dragging?0.4:1,transition:"opacity 0.18s",userSelect:"none",touchAction:"none",position:"relative"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+        <span style={{width:7,height:7,borderRadius:"50%",background:PC[story.priority]||"#888",flexShrink:0}}/>
+        <span style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",fontWeight:500,flex:1,lineHeight:1.3}}>{story.title}</span>
+        {story.points
+          ? <span style={{background:"#7c3aed",color:"white",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700,fontFamily:"Syne"}}>{story.points}</span>
+          : <span style={{background:"rgba(255,255,255,0.05)",color:"#475569",borderRadius:6,padding:"2px 7px",fontSize:10}}>–</span>}
+        {showDel&&(
+          <div style={{display:"flex",gap:4,flexShrink:0}}>
+            <button onClick={e=>{e.stopPropagation();setEditing(true);}}
+              style={{width:20,height:20,borderRadius:5,border:"none",background:"rgba(124,58,237,0.25)",color:"#a78bfa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11}}
+              title="Edit">✎</button>
+            {onDelete&&<button onClick={e=>{e.stopPropagation();onDelete(story.id,columnId);}}
+              style={{width:20,height:20,borderRadius:5,border:"none",background:"rgba(255,77,109,0.25)",color:"#ff4d6d",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,lineHeight:1}}
+              title="Remove">×</button>}
+          </div>
+        )}
+      </div>
+      {story.description&&<div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginBottom:5,lineHeight:1.4}}>{story.description}</div>}
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+        {story.tags?.map(t=><span key={t} style={{background:"rgba(255,255,255,0.05)",borderRadius:4,padding:"1px 6px",fontSize:10,color:"#64748b"}}>{t}</span>)}
+        {story.assignee&&<span style={{background:"rgba(124,58,237,0.15)",borderRadius:4,padding:"1px 7px",fontSize:10,color:"#a78bfa",marginLeft:"auto"}}>👤 {story.assignee}</span>}
+      </div>
+    </div>
+  );
+};
 
   // ── Touch drag ───────────────────────────────────────────
   const onTouchStart = (e) => {
@@ -1051,7 +1194,7 @@ const KanbanCard = ({ story, columnId, onDrop, onDelete }) => {
 // ─────────────────────────────────────────────────────────────
 //  DROP COLUMN
 // ─────────────────────────────────────────────────────────────
-const DropColumn = ({ id, title, stories, color, onDrop, onAdd, onDelete, onRenameCol, participants=[] }) => {
+const DropColumn = ({ id, title, stories, color, onDrop, onAdd, onDelete, onEdit, onRenameCol, participants=[] }) => {
   const [over,setOver]         = useState(false);
   const [adding,setAdding]     = useState(false);
   const [editingTitle,setEditingTitle] = useState(false);
@@ -1093,7 +1236,7 @@ const DropColumn = ({ id, title, stories, color, onDrop, onAdd, onDelete, onRena
       </div>
 
       <div style={{flex:1}}>
-        {stories.map(s=><KanbanCard key={s.id} story={s} columnId={id} onDrop={onDrop} onDelete={onDelete}/>)}
+        {stories.map(s=><KanbanCard key={s.id} story={s} columnId={id} onDrop={onDrop} onDelete={onDelete} onEdit={onEdit} participants={participants}/>)}
         {stories.length===0&&!adding&&<div style={{textAlign:"center",color:"#1e293b",fontSize:12,marginTop:32,fontFamily:"DM Sans"}}>No stories yet</div>}
       </div>
 
@@ -1696,18 +1839,26 @@ const PricingModal = ({ onClose, onUpgrade }) => {
 // ─────────────────────────────────────────────────────────────
 const RetroPrepView = ({ session }) => {
   const { userId, displayName, color, room } = session;
-  const [notes, setNotes]       = useState({ went_well:[], went_bad:[], action_items:[] });
-  const [inputs, setInputs]     = useState({ went_well:"", went_bad:"", action_items:"" });
+  const [templateKey, setTemplateKey] = useState(() => {
+    try { return localStorage.getItem(`sv_prep_tmpl_${room?.id}`) || "standard"; } catch { return "standard"; }
+  });
+  const activeCols = RETRO_TEMPLATES[templateKey]?.cols || RETRO_TEMPLATES.standard.cols;
+  const initNotes  = (cols) => Object.fromEntries(cols.map(c=>[c.id,[]]));
+  const initInputs = (cols) => Object.fromEntries(cols.map(c=>[c.id,""]));
+  const [notes, setNotes]       = useState(()=>initNotes(activeCols));
+  const [inputs, setInputs]     = useState(()=>initInputs(activeCols));
   const [loading, setLoading]   = useState(false);
   const [importing, setImporting] = useState(false);
   const [imported, setImported] = useState(false);
   const [toast, setToast]       = useState("");
 
-  const COLS = [
-    { id:"went_well",    label:"✅ Went Well",    color:"#06d6a0", placeholder:"What went well this sprint?" },
-    { id:"went_bad",     label:"⚠️ To Improve",   color:"#ffd166", placeholder:"What could be better?" },
-    { id:"action_items", label:"⚡ Action Items",  color:"#7c3aed", placeholder:"What should we do next sprint?" },
-  ];
+  const changeTemplate = (key) => {
+    setTemplateKey(key);
+    const cols = RETRO_TEMPLATES[key].cols;
+    setNotes(initNotes(cols));
+    setInputs(initInputs(cols));
+    try { localStorage.setItem(`sv_prep_tmpl_${room?.id}`, key); } catch {}
+  };
 
   // Load prep notes in real time
   useEffect(() => {
@@ -1716,8 +1867,8 @@ const RetroPrepView = ({ session }) => {
       const { data } = await supabase.from("retro_prep").select("*")
         .eq("room_id", room.id).eq("imported", false).order("created_at");
       if (data) {
-        const grouped = { went_well:[], went_bad:[], action_items:[] };
-        data.forEach(n => { if (grouped[n.column_id]) grouped[n.column_id].push(n); });
+        const grouped = initNotes(activeCols);
+        data.forEach(n => { if (grouped[n.column_id] !== undefined) grouped[n.column_id].push(n); });
         setNotes(grouped);
       }
     };
@@ -1726,7 +1877,7 @@ const RetroPrepView = ({ session }) => {
       .on("postgres_changes", { event:"*", schema:"public", table:"retro_prep", filter:`room_id=eq.${room.id}` }, load)
       .subscribe();
     return () => supabase.removeChannel(ch);
-  }, [room?.id]);
+  }, [room?.id, templateKey]);
 
   const addNote = async (colId) => {
     const text = inputs[colId]?.trim();
@@ -1750,22 +1901,14 @@ const RetroPrepView = ({ session }) => {
   const importToRetro = async () => {
     setImporting(true);
     try {
-      const allNotes = [...notes.went_well, ...notes.went_bad, ...notes.action_items];
-      if (allNotes.length === 0) { setToast("No prep notes to import!"); setTimeout(()=>setToast(""),3000); return; }
-
-      // Map prep columns to retro columns
-      const COL_MAP = { went_well:"went_well", went_bad:"to_improve", action_items:"action_items" };
-
+      const allNotes = activeCols.flatMap(c => notes[c.id]||[]);
+      if (allNotes.length === 0) { setToast("No prep notes to import!"); setTimeout(()=>setToast(""),3000); setImporting(false); return; }
       for (const note of allNotes) {
         await supabase.from("retro_notes").insert({
-          room_id: room.id,
-          column_id: COL_MAP[note.column_id] || note.column_id,
-          text: note.text,
-          user_id: note.user_id,
-          display_name: note.display_name,
-          votes: 0
+          room_id: room.id, column_id: note.column_id,
+          text: note.text, user_id: note.user_id,
+          display_name: note.display_name, votes: 0
         });
-        // Mark as imported so they don't show in prep anymore
         await supabase.from("retro_prep").update({ imported: true }).eq("id", note.id);
       }
       setImported(true);
@@ -1775,7 +1918,7 @@ const RetroPrepView = ({ session }) => {
     finally { setImporting(false); }
   };
 
-  const totalNotes = Object.values(notes).flat().length;
+  const totalNotes = activeCols.reduce((sum,c)=>sum+(notes[c.id]?.length||0),0);
 
   return(
     <div style={{padding:"20px 16px 60px",maxWidth:900,margin:"0 auto"}}>
@@ -1815,27 +1958,40 @@ const RetroPrepView = ({ session }) => {
         </div>
       </div>
 
-      {/* Three columns */}
+      {/* Template picker */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:14,marginBottom:20}}>
+        <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:10}}>PREP FORMAT — match this to your retrospective template</div>
+        <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+          {Object.entries(RETRO_TEMPLATES).map(([key,tmpl])=>(
+            <button key={key} onClick={()=>changeTemplate(key)}
+              style={{padding:"6px 12px",borderRadius:20,border:`1.5px solid ${templateKey===key?"#7c3aed":"rgba(255,255,255,0.1)"}`,background:templateKey===key?"rgba(124,58,237,0.18)":"rgba(255,255,255,0.03)",color:templateKey===key?"#a78bfa":"#64748b",cursor:"pointer",fontFamily:"DM Sans",fontSize:12,transition:"all 0.18s"}}>
+              {tmpl.emoji} {tmpl.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Columns */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:16}}>
-        {COLS.map(col=>(
+        {activeCols.map(col=>(
           <div key={col.id} style={{background:"rgba(255,255,255,0.03)",border:`1px solid rgba(255,255,255,0.07)`,borderRadius:16,overflow:"hidden"}}>
             {/* Column header */}
             <div style={{padding:"14px 16px",borderBottom:`1px solid ${col.color}33`,background:`${col.color}0a`}}>
-              <div style={{fontFamily:"Syne",fontSize:13,fontWeight:800,color:col.color}}>{col.label}</div>
+              <div style={{fontFamily:"Syne",fontSize:13,fontWeight:800,color:col.color}}>{col.emoji} {col.label}</div>
               <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569",marginTop:2}}>
-                {notes[col.id].length} note{notes[col.id].length!==1?"s":""}
+                {(notes[col.id]||[]).length} note{(notes[col.id]||[]).length!==1?"s":""}
               </div>
             </div>
 
             {/* Notes */}
             <div style={{padding:"12px 12px 8px",minHeight:120,maxHeight:400,overflowY:"auto"}}>
-              {notes[col.id].length===0&&(
+              {(notes[col.id]||[]).length===0&&(
                 <div style={{textAlign:"center",padding:"24px 0",fontFamily:"DM Sans",fontSize:12,color:"#1e293b"}}>
                   No notes yet — be the first!
                 </div>
               )}
-              {notes[col.id].map(n=>(
-                <div key={n.id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"10px 12px",marginBottom:8,position:"relative",animation:"noteIn 0.2s ease"}}>
+              {(notes[col.id]||[]).map(n=>(
+                <div key={n.id} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:10,padding:"10px 12px",marginBottom:8,position:"relative"}}>
                   <div style={{fontFamily:"DM Sans",fontSize:13,color:"#e2e8f0",lineHeight:1.5,marginBottom:6,paddingRight:20}}>{n.text}</div>
                   <div style={{display:"flex",alignItems:"center",gap:7}}>
                     <div style={{width:16,height:16,borderRadius:"50%",background:n.color||col.color,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Syne",fontWeight:800,fontSize:7,color:"white",flexShrink:0}}>
@@ -1856,10 +2012,10 @@ const RetroPrepView = ({ session }) => {
             <div style={{padding:"8px 12px 12px",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
               <div style={{display:"flex",gap:8}}>
                 <input
-                  value={inputs[col.id]}
+                  value={inputs[col.id]||""}
                   onChange={e=>setInputs(p=>({...p,[col.id]:e.target.value}))}
                   onKeyDown={e=>e.key==="Enter"&&addNote(col.id)}
-                  placeholder={col.placeholder}
+                  placeholder={`Add a ${col.label} note…`}
                   style={{...inp(),flex:1,fontSize:12,padding:"8px 10px"}}/>
                 <button onClick={()=>addNote(col.id)} disabled={loading||!inputs[col.id]?.trim()}
                   style={btn(col.color,"white",{padding:"8px 12px",fontSize:12,flexShrink:0,opacity:!inputs[col.id]?.trim()?0.4:1})}>
@@ -2272,6 +2428,10 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
   const [currentPassword, setCurrentPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  const [feedbackText, setFeedbackText] = useState("");
+  const [feedbackType, setFeedbackType] = useState("general");
+  const [feedbackSending, setFeedbackSending] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState("");
 
   const isGuest = session?.userId?.startsWith("guest_");
 
@@ -2315,7 +2475,36 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
     finally { setSaving(false); }
   };
 
-  const TABS = ["account","notifications","subscription"];
+  const sendFeedback = async () => {
+    if (!feedbackText.trim()) { setFeedbackMsg("Please write your feedback first."); return; }
+    setFeedbackSending(true); setFeedbackMsg("");
+    try {
+      const RESEND_KEY = import.meta.env.VITE_RESEND_API_KEY;
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Content-Type":"application/json", "Authorization":`Bearer ${RESEND_KEY}` },
+        body: JSON.stringify({
+          from: "SprintVibe Feedback <onboarding@resend.dev>",
+          to: ["mjackson646@gmail.com"],
+          subject: `[SprintVibe Feedback] ${feedbackType.toUpperCase()} — ${session?.displayName || "User"}`,
+          html: `<h2>SprintVibe Feedback</h2>
+            <p><strong>Type:</strong> ${feedbackType}</p>
+            <p><strong>From:</strong> ${session?.displayName || "Anonymous"} (${session?.user?.email || session?.email || "guest"})</p>
+            <p><strong>Message:</strong></p>
+            <blockquote style="border-left:3px solid #7c3aed;padding-left:12px;color:#555">${feedbackText.replace(/\n/g,"<br/>")}</blockquote>
+            <hr/>
+            <p style="color:#999;font-size:12px">Room: ${session?.room?.code || "none"} · User ID: ${session?.userId}</p>`,
+        }),
+      });
+      if (!res.ok) throw new Error("Send failed");
+      setFeedbackText(""); setFeedbackType("general");
+      setFeedbackMsg("✓ Feedback sent — thank you!");
+      setTimeout(() => setFeedbackMsg(""), 4000);
+    } catch(e) { setFeedbackMsg("Failed to send. Please try again."); }
+    finally { setFeedbackSending(false); }
+  };
+
+  const TABS = ["account","notifications","subscription","feedback"];
 
   return(
     <div style={{padding:"20px 16px 48px",maxWidth:540,margin:"0 auto"}}>
@@ -2326,7 +2515,7 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
         {TABS.map(t=>(
           <button key={t} onClick={()=>setActiveTab(t)}
             style={{flex:1,padding:"8px",borderRadius:9,border:"none",cursor:"pointer",fontFamily:"Syne",fontWeight:700,fontSize:11,textTransform:"capitalize",letterSpacing:0.5,background:activeTab===t?"rgba(124,58,237,0.25)":"transparent",color:activeTab===t?"#a78bfa":"#475569",transition:"all 0.2s"}}>
-            {t==="account"?"👤 Account":t==="notifications"?"🔔 Notifications":"💎 Subscription"}
+            {t==="account"?"👤 Account":t==="notifications"?"🔔 Alerts":t==="subscription"?"💎 Plan":"💬 Feedback"}
           </button>
         ))}
       </div>
@@ -2449,6 +2638,36 @@ const SettingsView = ({ session, onShowPricing, pushPermission, onEnableNotifica
           </div>
         </div>
       )}
+
+      {/* ── FEEDBACK TAB ── */}
+      {activeTab==="feedback"&&(
+        <div>
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:18,marginBottom:14}}>
+            <div style={{fontFamily:"Syne",fontSize:10,color:"#64748b",letterSpacing:1,marginBottom:14}}>SEND FEEDBACK</div>
+            <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569",marginBottom:16,lineHeight:1.6}}>Found a bug? Have an idea? We read every message.</div>
+            <div style={{display:"flex",gap:7,marginBottom:14,flexWrap:"wrap"}}>
+              {[{id:"general",label:"💬 General"},{id:"bug",label:"🐛 Bug Report"},{id:"feature",label:"✨ Feature Idea"},{id:"praise",label:"🙌 Praise"}].map(t=>(
+                <button key={t.id} onClick={()=>setFeedbackType(t.id)}
+                  style={{padding:"6px 13px",borderRadius:20,border:`1.5px solid ${feedbackType===t.id?"#7c3aed":"rgba(255,255,255,0.1)"}`,background:feedbackType===t.id?"rgba(124,58,237,0.18)":"rgba(255,255,255,0.03)",color:feedbackType===t.id?"#a78bfa":"#64748b",cursor:"pointer",fontFamily:"DM Sans",fontSize:12,transition:"all 0.18s"}}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <textarea value={feedbackText} onChange={e=>setFeedbackText(e.target.value)}
+              placeholder={feedbackType==="bug"?"Describe what happened and what you expected…":feedbackType==="feature"?"What would you like SprintVibe to do?":feedbackType==="praise"?"Tell us what you love! 🙂":"What's on your mind?"}
+              rows={5} style={{...inp(),resize:"none",marginBottom:12,fontSize:13,lineHeight:1.6}}/>
+            {feedbackMsg&&(
+              <div style={{background:feedbackMsg.startsWith("✓")?"rgba(6,214,160,0.08)":"rgba(255,77,109,0.08)",border:`1px solid ${feedbackMsg.startsWith("✓")?"rgba(6,214,160,0.2)":"rgba(255,77,109,0.2)"}`,borderRadius:9,padding:"9px 12px",marginBottom:12,fontFamily:"DM Sans",fontSize:13,color:feedbackMsg.startsWith("✓")?"#06d6a0":"#ff4d6d"}}>
+                {feedbackMsg}
+              </div>
+            )}
+            <button onClick={sendFeedback} disabled={feedbackSending}
+              style={btn("#7c3aed","white",{width:"100%",padding:"12px",fontSize:13,opacity:feedbackSending?0.6:1})}>
+              {feedbackSending?"Sending…":"Send Feedback →"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -2499,37 +2718,77 @@ export default function SprintVibe() {
     try { localStorage.setItem("sprintvibe_session", JSON.stringify(updatedSession)); } catch(e) {}
   };
 
-  // ── Session persistence — restore on refresh ─────────────
+  // ── Session persistence — restore on refresh + Google OAuth ──
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("join")) { setScreen("onboarding"); return; }
 
-    // Detect password reset link — Supabase puts token in URL hash
+    // Detect password reset link
     const hash = window.location.hash;
     if (hash.includes("access_token") && hash.includes("type=recovery")) {
       setScreen("resetpassword");
       return;
     }
 
-    // Try to restore session from localStorage
+    // Restore full SprintVibe session from localStorage (works for all user types)
     try {
       const saved = localStorage.getItem("sprintvibe_session");
       if (saved) {
         const sess = JSON.parse(saved);
         if (sess?.room?.id && sess?.userId) {
-          setSession(sess);
-          setScreen("app");
+          // Re-hydrate the Supabase auth user if they were logged in
+          supabase.auth.getSession().then(({ data: { session: authSess } }) => {
+            const restored = authSess?.user ? { ...sess, user: authSess.user } : sess;
+            setSession(restored);
+            setScreen("app");
+            try {
+              const saved2 = localStorage.getItem(`sv_coltitles_${restored.room?.id}`);
+              if (saved2) setCustomColTitles(JSON.parse(saved2));
+            } catch {}
+          });
           return;
         }
       }
     } catch(e) {}
 
-    // Check Supabase auth session
-    supabase.auth.getSession().then(({ data: { session: authSess } }) => {
-      if (authSess?.user) {
-        setScreen("onboarding");
+    // Listen for Google OAuth / magic-link callback
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, authSess) => {
+      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && authSess?.user) {
+        // Check if we already have a SprintVibe session in localStorage
+        try {
+          const saved = localStorage.getItem("sprintvibe_session");
+          if (saved) {
+            const sess = JSON.parse(saved);
+            if (sess?.room?.id && sess?.userId) {
+              setSession({ ...sess, user: authSess.user });
+              setScreen("app");
+              return;
+            }
+          }
+        } catch {}
+        // No room yet — send to room selector for auth users
+        const u = authSess.user;
+        const displayName = u.user_metadata?.display_name || u.user_metadata?.full_name || u.email?.split("@")[0] || "You";
+        const color = COLORS[Math.floor(Math.random()*COLORS.length)];
+        const partialSession = { userId: u.id, displayName, color, user: u };
+        try { localStorage.setItem("sprintvibe_session", JSON.stringify(partialSession)); } catch {}
+        setSession(partialSession);
+        setScreen("roomselector");
       }
     });
+
+    // Also check for an active Supabase auth session on load
+    supabase.auth.getSession().then(({ data: { session: authSess } }) => {
+      if (authSess?.user) {
+        const u = authSess.user;
+        const displayName = u.user_metadata?.display_name || u.user_metadata?.full_name || u.email?.split("@")[0] || "You";
+        const color = COLORS[Math.floor(Math.random()*COLORS.length)];
+        setSession(prev => prev || { userId: u.id, displayName, color, user: u });
+        setScreen(prev => prev === "landing" || !prev ? "roomselector" : prev);
+      }
+    });
+
+    return () => subscription?.unsubscribe?.();
   }, []);
 
   const roomUrl = session
@@ -2603,6 +2862,11 @@ export default function SprintVibe() {
   const removeStory = async (storyId, col) => {
     setStories(p => ({ ...p, [col]: (p[col]||[]).filter(s => s.id !== storyId) }));
     await deleteStory(storyId).catch(console.error);
+  };
+
+  const editStory = async (storyId, col, updated) => {
+    setStories(p => ({ ...p, [col]: (p[col]||[]).map(s => s.id === storyId ? { ...s, ...updated } : s) }));
+    if (session?.room?.id) await saveStory(session.room.id, updated, col).catch(console.error);
   };
 
   // ── Load stories from Supabase on join ───────────────────
@@ -2894,11 +3158,11 @@ export default function SprintVibe() {
               {COLUMNS.map(col=>{
                 const colTitle = customColTitles[col.id] || col.title;
                 const colStories = boardFilter
-                  ? (stories[col.id]||[]).filter(s=>s.assignee===boardFilter)
+                  ? (stories[col.id]||[]).filter(s=> !s.assignee || s.assignee===boardFilter)
                   : (stories[col.id]||[]);
                 return <DropColumn key={col.id} id={col.id} title={colTitle} color={col.color}
                   stories={colStories} onDrop={drop} onAdd={addStory} onDelete={removeStory}
-                  onRenameCol={handleRenameCol} participants={participants}/>;
+                  onEdit={editStory} onRenameCol={handleRenameCol} participants={participants}/>;
               })}
             </div>
           </div>
