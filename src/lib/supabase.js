@@ -114,6 +114,7 @@ export const saveStory = async (roomId, story, columnId) => {
     id: story.id, room_id: roomId, title: story.title,
     description: story.description || '', priority: story.priority || 'medium',
     tags: story.tags || [], points: story.points || null, column_id: columnId,
+    assignee: story.assignee || null,
   }, { onConflict: 'id' })
   if (error) console.error('saveStory error:', error)
 }
@@ -153,7 +154,7 @@ export const sendRetroRecap = async ({ to, roomCode, notes, actions, summary }) 
     method: 'POST',
     headers: { 'Authorization': `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: 'SprintVibe <recaps@sprintvibe.app>',
+      from: 'SprintVibe Recaps <recap@sprintvibe.io>',
       to, subject: `Sprint Retro Recap — Room ${roomCode}`,
       html: `<div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:32px">
         <h1 style="color:#a78bfa">SprintVibe</h1>
