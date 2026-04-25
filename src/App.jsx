@@ -1726,7 +1726,7 @@ const RetroPrepView = ({ session }) => {
     if (!room?.id) return;
     const load = async () => {
       const { data } = await supabase.from("retro_prep").select("*")
-        .eq("room_id", room.id).eq("imported", false).order("created_at");
+        .eq("imported", false).order("created_at");
       if (data) {
         const grouped = initNotes(activeCols);
         data.forEach(n => { if (grouped[n.column_id] !== undefined) grouped[n.column_id].push(n); });
