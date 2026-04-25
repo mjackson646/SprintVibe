@@ -12,7 +12,7 @@ import { supabase, createRoom, findRoom, joinRoom, leaveRoom,
 // ─────────────────────────────────────────────────────────────
 const FontLoader = () => {
   useEffect(() => {
-    const l = document.createElement("link");
+    const l = document.createElement("link");h
     l.rel = "stylesheet";
     l.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500;600&display=swap";
     document.head.appendChild(l);
@@ -2137,7 +2137,7 @@ const EmailRecap = ({ notes, aiSummary, roomCode }) => {
     } finally { setSending(false); }
   };
 
-  if (sent) return(
+  if (false) return(
     <div style={{background:"rgba(6,214,160,0.08)",border:"1px solid rgba(6,214,160,0.2)",borderRadius:14,padding:16,marginBottom:16,textAlign:"center"}}>
       <div style={{fontSize:24,marginBottom:6}}>📧</div>
       <div style={{fontFamily:"Syne",fontSize:14,fontWeight:700,color:"#06d6a0"}}>Recap sent!</div>
@@ -2155,7 +2155,7 @@ const EmailRecap = ({ notes, aiSummary, roomCode }) => {
       {error&&<div style={{fontFamily:"DM Sans",fontSize:12,color:"#ff4d6d",marginBottom:8}}>{error}</div>}
       <button onClick={send} disabled={sending}
         style={btn("#7c3aed","white",{width:"100%",padding:"11px",opacity:sending?0.6:1})}>
-        {sending?"Sending…":"📧 Send Recap to Everyone"}
+        {sending?"Sending…":sent?"📧 Resend Recap":"📧 Send Recap to Everyone"}
       </button>
     </div>
   );
@@ -2540,7 +2540,7 @@ export default function SprintVibe() {
   const [modal, setModal]       = useState(null);
   const [toast, setToast]       = useState(null);
   const [participants, setParticipants] = useState([]);
-  const [workspace, setWorkspace] = useState(null);
+  const [workspace, setWorkspace] = useState(null); useEffect(()=>{if(workspace?.id)localStorage.setItem('sv_last_workspace',workspace.id);},[workspace?.id]);
   const [screen, setScreen]     = useState("landing");
   const [signinMode, setSigninMode] = useState("welcome");
   const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
@@ -2569,7 +2569,7 @@ export default function SprintVibe() {
   };
 
   const goTo = (newScreen, mode="welcome") => {
-    window.scrollTo(0, 0);
+    if(newScreen!=="landing")window.history.pushState({screen:newScreen},""); window.scrollTo(0, 0);
     setSigninMode(mode);
     setScreen(newScreen);
   };
@@ -3019,7 +3019,7 @@ export default function SprintVibe() {
               {COLUMNS.map(col=>{
                 const colTitle = customColTitles[col.id] || col.title;
                 const colStories = boardFilter
-                  ? (stories[col.id]||[]).filter(s=> !s.assignee || s.assignee===boardFilter)
+                  ? (stories[col.id]||[]).filter(s=> s.assignee===boardFilter)
                   : (stories[col.id]||[]);
                 return <DropColumn key={col.id} id={col.id} title={colTitle} color={col.color}
                   stories={colStories} onDrop={drop} onAdd={addStory} onDelete={removeStory}
