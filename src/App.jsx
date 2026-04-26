@@ -12,7 +12,7 @@ import { supabase, createRoom, findRoom, joinRoom, leaveRoom,
 // ─────────────────────────────────────────────────────────────
 const FontLoader = () => {
   useEffect(() => {
-    const l = document.createElement("link");h
+    const l = document.createElement("link");
     l.rel = "stylesheet";
     l.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500;600&display=swap";
     document.head.appendChild(l);
