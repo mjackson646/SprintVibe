@@ -1364,7 +1364,21 @@ const RetroView = ({ session, roomUrl }) => {
     return () => supabase.removeChannel(ch);
   }, [room]);
 
+  const retroSessionRef = useRef(null);
+
   const advancePhase = async (newPhase) => {
+    if (newPhase === "done" && role === "host") {
+      try {
+        const { data } = await supabase.from("retro_sessions").insert({
+          room_id: room.id,
+          template_key: templateKey,
+          notes: notes,
+          total_notes: totalNotes,
+          total_votes: totalVotes,
+        }).select().single();
+        if (data) retroSessionRef.current = data.id;
+      } catch(e) { console.error("retro_sessions save:", e); }
+    }
     setPhaseLocal(newPhase);
     await setPhase(room.id, newPhase);
   };
@@ -1390,7 +1404,11 @@ const RetroView = ({ session, roomUrl }) => {
     try {
       const res = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:600,system:`You are an agile coach. Return ONLY valid JSON no markdown: {"summary":"2 sentences","actions":["a1","a2","a3"],"health":"good|fair|poor"}`,messages:[{role:"user",content:`Went Well:${notes.went_well.map(n=>n.text).join(",")}\nImprove:${notes.improve.map(n=>n.text).join(",")}\nActions:${notes.action_items.map(n=>n.text).join(",")}`}]})});
       const data = await res.json();
-      setAiSummary(JSON.parse(data.content.map(b=>b.text||"").join("").replace(/```json|```/g,"").trim()));
+      const parsed = JSON.parse(data.content.map(b=>b.text||"").join("").replace(/```json|```/g,"").trim());
+      setAiSummary(parsed);
+      if (retroSessionRef.current) {
+        await supabase.from("retro_sessions").update({ ai_summary: parsed }).eq("id", retroSessionRef.current).catch(()=>{});
+      }
     } catch { setAiSummary({summary:"Great sprint! Focus on the action items you identified to keep improving.",actions:["Follow up on top voted items","Schedule action item owners","Review at next sprint start"],health:"good"}); }
     finally { setAiLoading(false); }
   };
@@ -1638,6 +1656,141 @@ const RetroView = ({ session, roomUrl }) => {
     </div>
   );
   return null;
+};
+
+// ─────────────────────────────────────────────────────────────
+//  RETRO HISTORY — record of all past retrospectives
+// ─────────────────────────────────────────────────────────────
+const RetroHistoryView = ({ session }) => {
+  const { room } = session;
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [expanded, setExpanded] = useState(null);
+
+  useEffect(() => {
+    if (!room?.id) return;
+    const load = async () => {
+      setLoading(true);
+      try {
+        const { data } = await supabase
+          .from("retro_sessions")
+          .select("*")
+          .eq("room_id", room.id)
+          .order("created_at", { ascending: false });
+        if (data) setSessions(data);
+      } catch(e) { console.error(e); }
+      finally { setLoading(false); }
+    };
+    load();
+  }, [room?.id]);
+
+  const fmt = (iso) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-US", { month:"short", day:"numeric", year:"numeric", hour:"2-digit", minute:"2-digit" });
+  };
+
+  const healthColor = { good:"#06d6a0", fair:"#ffd166", poor:"#ff4d6d" };
+
+  return (
+    <div style={{padding:"20px 16px 60px",maxWidth:720,margin:"0 auto"}}>
+      <div style={{marginBottom:24}}>
+        <div style={{fontFamily:"Syne",fontSize:22,fontWeight:800,color:"white",marginBottom:4}}>📜 Retro History</div>
+        <div style={{fontFamily:"DM Sans",fontSize:13,color:"#475569"}}>A record of every past retrospective completed in this workspace.</div>
+      </div>
+
+      {loading && (
+        <div style={{textAlign:"center",padding:48}}>
+          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#334155",animation:"pulse 2s ease infinite"}}>Loading history…</div>
+        </div>
+      )}
+
+      {!loading && sessions.length === 0 && (
+        <div style={{background:"rgba(255,255,255,0.02)",border:"1px dashed rgba(255,255,255,0.07)",borderRadius:16,padding:"48px 20px",textAlign:"center"}}>
+          <div style={{fontSize:36,marginBottom:12}}>🏁</div>
+          <div style={{fontFamily:"Syne",fontSize:16,fontWeight:700,color:"#334155",marginBottom:6}}>No retrospectives yet</div>
+          <div style={{fontFamily:"DM Sans",fontSize:13,color:"#1e293b"}}>Complete a retrospective and it'll appear here automatically.</div>
+        </div>
+      )}
+
+      {!loading && sessions.length > 0 && (
+        <div style={{fontFamily:"DM Sans",fontSize:12,color:"#475569",marginBottom:16}}>{sessions.length} retrospective{sessions.length!==1?"s":""} on record</div>
+      )}
+
+      {!loading && sessions.map((s) => {
+        const isOpen = expanded === s.id;
+        const tmpl   = RETRO_TEMPLATES[s.template_key] || RETRO_TEMPLATES.standard;
+        const health = s.ai_summary?.health;
+        return (
+          <div key={s.id} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:18,overflow:"hidden",marginBottom:12,transition:"border-color 0.2s"}}>
+            {/* Header row */}
+            <div
+              onClick={() => setExpanded(isOpen ? null : s.id)}
+              style={{padding:"16px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+              <div style={{width:40,height:40,borderRadius:12,background:"rgba(124,58,237,0.15)",border:"1.5px solid rgba(124,58,237,0.25)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+                {tmpl.emoji}
+              </div>
+              <div style={{flex:1,minWidth:120}}>
+                <div style={{fontFamily:"Syne",fontSize:14,fontWeight:800,color:"white",marginBottom:2}}>{tmpl.name} Retrospective</div>
+                <div style={{fontFamily:"DM Sans",fontSize:11,color:"#475569"}}>{fmt(s.created_at)}</div>
+              </div>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                <span style={{background:"rgba(124,58,237,0.12)",borderRadius:8,padding:"3px 9px",fontFamily:"Syne",fontSize:11,fontWeight:700,color:"#a78bfa"}}>{s.total_notes||0} notes</span>
+                <span style={{background:"rgba(255,213,102,0.1)",borderRadius:8,padding:"3px 9px",fontFamily:"Syne",fontSize:11,fontWeight:700,color:"#ffd166"}}>{s.total_votes||0} votes</span>
+                {health && <span style={{background:`${healthColor[health]}22`,borderRadius:8,padding:"3px 9px",fontFamily:"Syne",fontSize:11,fontWeight:700,color:healthColor[health]}}>{health.toUpperCase()}</span>}
+              </div>
+              <span style={{color:"#475569",fontSize:14,transform:isOpen?"rotate(180deg)":"none",transition:"transform 0.2s",flexShrink:0}}>▾</span>
+            </div>
+
+            {/* Expanded body */}
+            {isOpen && (
+              <div style={{borderTop:"1px solid rgba(255,255,255,0.06)",padding:"16px 18px"}}>
+                {/* AI Summary */}
+                {s.ai_summary && (
+                  <div style={{background:"rgba(124,58,237,0.07)",border:"1px solid rgba(124,58,237,0.15)",borderRadius:12,padding:"12px 14px",marginBottom:16}}>
+                    <div style={{fontFamily:"Syne",fontSize:9,color:"#7c3aed",letterSpacing:2,marginBottom:6}}>✨ AI COACH SUMMARY</div>
+                    <div style={{fontFamily:"DM Sans",fontSize:13,color:"#94a3b8",lineHeight:1.6,marginBottom:8}}>{s.ai_summary.summary}</div>
+                    {s.ai_summary.actions?.map((a, j) => (
+                      <div key={j} style={{fontFamily:"DM Sans",fontSize:12,color:"#e2e8f0",display:"flex",gap:8,marginBottom:4}}>
+                        <span style={{color:"#7c3aed",fontWeight:700,flexShrink:0}}>{j+1}.</span>{a}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Notes by column */}
+                {s.notes && (
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
+                    {tmpl.cols.map(col => {
+                      const colNotes = s.notes[col.id] || [];
+                      if (!colNotes.length) return null;
+                      return (
+                        <div key={col.id} style={{background:"rgba(255,255,255,0.02)",border:`1px solid ${col.color}22`,borderRadius:12,padding:12}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10,paddingBottom:8,borderBottom:`1px solid ${col.color}22`}}>
+                            <span style={{fontSize:13}}>{col.emoji}</span>
+                            <span style={{fontFamily:"Syne",fontSize:11,fontWeight:700,color:col.color}}>{col.label}</span>
+                            <span style={{marginLeft:"auto",fontFamily:"DM Sans",fontSize:10,color:"#475569"}}>{colNotes.length}</span>
+                          </div>
+                          {colNotes.map((n, k) => (
+                            <div key={k} style={{fontFamily:"DM Sans",fontSize:12,color:"#94a3b8",padding:"5px 8px",background:"rgba(255,255,255,0.03)",borderRadius:7,marginBottom:5,borderLeft:`2px solid ${col.color}`,lineHeight:1.4}}>
+                              {n.text}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {!s.ai_summary && (
+                  <div style={{fontFamily:"DM Sans",fontSize:12,color:"#334155",marginTop:8}}>No AI summary — run AI Coach during the retro to capture insights.</div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -2811,6 +2964,7 @@ export default function SprintVibe() {
     { id:"poker",     l:"🃏 Poker"     },
     { id:"prep",      l:"📝 Retro Prep" },
     { id:"retro",     l:"🏁 Retro"     },
+    { id:"history",   l:"📜 History"   },
     { id:"analytics", l:"📊 Analytics" },
   ];
 
@@ -3031,6 +3185,7 @@ export default function SprintVibe() {
         {tab==="poker"     &&<PokerSession  stories={stories} session={session} roomUrl={roomUrl}/>}
         {tab==="retro"     &&<RetroView     session={session} roomUrl={roomUrl}/>}
         {tab==="prep"      &&<RetroPrepView session={session}/>}
+        {tab==="history"   &&<RetroHistoryView session={session}/>}
         {tab==="analytics" &&<AnalyticsView stories={stories} session={session}/>}
 
         {/* Modals */}
