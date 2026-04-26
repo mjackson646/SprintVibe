@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from "react";
 import { supabase, createRoom, findRoom, joinRoom, leaveRoom,
          castPokerVote, revealPokerVotes, getPokerVotes,
          addRetroNote, voteRetroNote, getRetroNotes,
-         getParticipants, setPhase, generateCode,
+         setPhase,
          signUp, signIn, signInWithGoogle, signOut,
-         saveStory, deleteStory, moveStory, scoreStory, getStories,
+         saveStory, deleteStory, moveStory, getStories,
          broadcastNotification, sendRetroRecap } from "./lib/supabase";
 
 // ─────────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@ const FontLoader = () => {
   useEffect(() => {
     const l = document.createElement("link");
     l.rel = "stylesheet";
-    l.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500;600&display=swap";
+    l.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap";
     document.head.appendChild(l);
   }, []);
   return null;
@@ -2290,7 +2290,7 @@ const EmailRecap = ({ notes, aiSummary, roomCode }) => {
     } finally { setSending(false); }
   };
 
-  if (false) return(
+  if (sent) return(
     <div style={{background:"rgba(6,214,160,0.08)",border:"1px solid rgba(6,214,160,0.2)",borderRadius:14,padding:16,marginBottom:16,textAlign:"center"}}>
       <div style={{fontSize:24,marginBottom:6}}>📧</div>
       <div style={{fontFamily:"Syne",fontSize:14,fontWeight:700,color:"#06d6a0"}}>Recap sent!</div>
@@ -2317,7 +2317,7 @@ const EmailRecap = ({ notes, aiSummary, roomCode }) => {
 // ─────────────────────────────────────────────────────────────
 //  STRIPE PAYMENT MODAL
 // ─────────────────────────────────────────────────────────────
-const StripeModal = ({ onClose, onUpgradePlan }) => {
+const StripeModal = ({ onClose }) => {
   const [selected, setSelected] = useState(null);
   const [step, setStep] = useState("plans"); // plans | checkout | success
 
@@ -2693,7 +2693,6 @@ export default function SprintVibe() {
   const [modal, setModal]       = useState(null);
   const [toast, setToast]       = useState(null);
   const [participants, setParticipants] = useState([]);
-  const [workspace, setWorkspace] = useState(null); useEffect(()=>{if(workspace?.id)localStorage.setItem('sv_last_workspace',workspace.id);},[workspace?.id]);
   const [screen, setScreen]     = useState("landing");
   const [signinMode, setSigninMode] = useState("welcome");
   const [guestBannerDismissed, setGuestBannerDismissed] = useState(false);
@@ -3030,20 +3029,6 @@ export default function SprintVibe() {
       </div>
       {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/>}
       {modal==="stripe"&&<StripeModal onClose={()=>setModal(null)}/>}
-    </>
-  );
-
-  // ── WORKSPACE DASHBOARD ──────────────────────────────────
-  if (screen === "workspace" && workspace) return(
-    <>
-      <FontLoader/>
-      <style>{STYLES}</style>
-      <WorkspaceDashboard
-        workspace={workspace}
-        session={session}
-        onStartSession={(type)=>setScreen("onboarding")}
-        onLeave={()=>setScreen("landing")}
-      />
     </>
   );
 
