@@ -604,19 +604,39 @@ const QRJoinBanner = ({ roomCode, url, participants=[] }) => {
 // ─────────────────────────────────────────────────────────────
 //  WORKSPACE CREATE
 // ─────────────────────────────────────────────────────────────
-const WorkspaceCreate = ({ session, onCreated, onSkip }) => {
+const WorkspaceCreate = ({ session, onCreated, onSkip, onShowPricing }) => {
   const [name, setName] = useState("");
   const [emails, setEmails] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [wsCount, setWsCount] = useState(null);
+
+  const userPlan = session?.plan || session?.user?.user_metadata?.plan || "free";
+  const isFree = userPlan === "free";
+
+  useEffect(() => {
+    if (!isFree || !session?.userId) return;
+    supabase.from("workspaces").select("id").eq("owner_id", session.userId)
+      .then(({ data }) => setWsCount(data?.length || 0));
+  }, [session?.userId, isFree]);
 
   const create = async () => {
     if (!name.trim()) { setError("Please enter a workspace name"); return; }
     setLoading(true); setError("");
     try {
+      // Free plan — cap at 1 workspace
+      const userPlan = session?.plan || session?.user?.user_metadata?.plan || "free";
+      if (userPlan === "free") {
+        const { data: existing } = await supabase.from("workspaces").select("id").eq("owner_id", session.userId);
+        if (existing && existing.length >= 1) {
+          setError("Free plan is limited to 1 workspace. Upgrade to Pro for unlimited workspaces.");
+          setLoading(false); return;
+        }
+      }
+
       // Create workspace in Supabase
       const { data: ws, error: wsErr } = await supabase.from("workspaces")
-        .insert({ name: name.trim(), owner_id: session.userId, plan: "free" })
+        .insert({ name: name.trim(), owner_id: session.userId, plan: userPlan })
         .select().single();
       if (wsErr) throw wsErr;
 
@@ -640,6 +660,14 @@ const WorkspaceCreate = ({ session, onCreated, onSkip }) => {
 
   return(
     <div style={{maxWidth:480,margin:"0 auto",padding:"40px 20px"}}>
+      {isFree && wsCount >= 1 ? (
+        <PaywallBanner
+          title="Workspace Limit Reached"
+          desc="Free plan includes 1 workspace. Upgrade to Pro for unlimited workspaces and all premium features."
+          onUpgrade={onShowPricing || (()=>{})}
+        />
+      ) : (
+      <>
       <div style={{textAlign:"center",marginBottom:32}}>
         <div style={{fontSize:40,marginBottom:12}}>🏢</div>
         <div style={{fontFamily:"Syne",fontSize:24,fontWeight:800,color:"white",marginBottom:8}}>Create your workspace</div>
@@ -668,6 +696,7 @@ const WorkspaceCreate = ({ session, onCreated, onSkip }) => {
         style={btn("rgba(255,255,255,0.04)","#475569",{width:"100%",padding:"12px",fontSize:13})}>
         Skip for now — just start a session
       </button>
+      </>)}
     </div>
   );
 };
