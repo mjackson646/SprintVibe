@@ -16,6 +16,15 @@ const FontLoader = () => {
     l.rel = "stylesheet";
     l.href = "https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap";
     document.head.appendChild(l);
+
+    // ── PostHog Analytics ─────────────────────────────────────
+    !function(t,e){var o,n,p,r;e.__SV||(window.posthog=e,e._i=[],e.init=function(i,s,a){function g(t,e){var o=e.split(".");2==o.length&&(t=t[o[0]],e=o[1]);t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}}(p=t.createElement("script")).type="text/javascript",p.crossOrigin="anonymous",p.async=!0,p.src=s.api_host+"/static/array.js",(r=t.getElementsByTagName("script")[0]).parentNode.insertBefore(p,r);var u=e;for(void 0!==a?u=e[a]=[]:a="posthog",u.people=u.people||[],u.toString=function(t){var e="posthog";return"posthog"!==a&&(e+="."+a),t||(e+=" (stub)"),e},u.people.toString=function(){return u.toString(1)+" (stub)"},o="capture identify alias people.set people.set_once set_config register register_once unregister opt_out_capturing has_opted_out_capturing opt_in_capturing reset isFeatureEnabled onFeatureFlags getFeatureFlag getFeatureFlagPayload reloadFeatureFlags group updateEarlyAccessFeatureEnrollment getEarlyAccessFeatures getActiveMatchingSurveys getSurveys onSessionId".split(" "),n=0;n<o.length;n++)g(u,o[n]);e._i.push([i,s,a])},e.__SV=1)}(document,window.posthog||[]);
+    window.posthog.init("phc_SprintVibeInit", {
+      api_host: "https://us.posthog.com",
+      person_profiles: "identified_only",
+      capture_pageview: true,
+      capture_pageleave: true,
+    });
   }, []);
   return null;
 };
@@ -2460,9 +2469,10 @@ const EmailRecap = ({ notes, aiSummary, roomCode }) => {
 // ─────────────────────────────────────────────────────────────
 //  STRIPE PAYMENT MODAL
 // ─────────────────────────────────────────────────────────────
-const StripeModal = ({ onClose }) => {
+const StripeModal = ({ onClose, session }) => {
   const [selected, setSelected] = useState(null);
   const [step, setStep] = useState("plans"); // plans | checkout | success
+  const [refreshing, setRefreshing] = useState(false);
 
   // Payment links — set these in your Stripe dashboard and add to env vars
   const PAYMENT_LINKS = {
@@ -2506,7 +2516,15 @@ const StripeModal = ({ onClose }) => {
   ];
 
   const handleUpgrade = (plan) => {
-    const link = PAYMENT_LINKS[plan.id];
+    let link = PAYMENT_LINKS[plan.id];
+    // Append user ID so webhook knows who to upgrade
+    const userId = session?.userId || session?.user?.id || "";
+    const email  = session?.user?.email || "";
+    const params = new URLSearchParams();
+    if (userId) params.set("client_reference_id", userId);
+    if (email)  params.set("prefilled_email", email);
+    const qs = params.toString();
+    if (qs) link = `${link}?${qs}`;
     window.open(link, "_blank");
     setSelected(plan);
     setStep("checkout");
@@ -2569,8 +2587,18 @@ const StripeModal = ({ onClose }) => {
             <div style={{fontFamily:"DM Sans",fontSize:14,color:"#64748b",lineHeight:1.6,marginBottom:24}}>
               You now have full access to all {selected?.name} features.
             </div>
-            <button onClick={()=>{ onClose(); }}
-              style={btn("#7c3aed","white",{padding:"13px 32px",fontSize:14})}>Start using {selected?.name} →</button>
+            <button onClick={async ()=>{
+                setRefreshing(true);
+                try {
+                  await supabase.auth.refreshSession();
+                } catch(e) {}
+                setRefreshing(false);
+                onClose();
+                window.location.reload();
+              }}
+              style={btn("#7c3aed","white",{padding:"13px 32px",fontSize:14})}>
+              {refreshing ? "Activating…" : `Start using ${selected?.name} →`}
+            </button>
           </div>
         </>)}
       </div>
@@ -3187,7 +3215,7 @@ export default function SprintVibe() {
         </div>
       </div>
       {modal==="pricing"&&<PricingModal onClose={()=>setModal(null)} onUpgrade={()=>setModal("stripe")}/>}
-      {modal==="stripe"&&<StripeModal onClose={()=>setModal(null)}/>}
+      {modal==="stripe"&&<StripeModal session={session} onClose={()=>setModal(null)}/>}
     </>
   );
 
@@ -3335,7 +3363,7 @@ export default function SprintVibe() {
         {/* Modals */}
         {modal==="pricing"  &&<PricingModal onClose={()=>setModal(null)} onUpgrade={(planId)=>setModal("stripe")}/> }
         {modal==="share"    &&<ShareModal session={session} roomUrl={roomUrl} onClose={()=>setModal(null)}/>}
-        {modal==="stripe"   &&<StripeModal onClose={()=>setModal(null)}/>}
+        {modal==="stripe"   &&<StripeModal session={session} onClose={()=>setModal(null)}/>}
 
         {modal==="settings" &&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:300,display:"flex",justifyContent:"flex-end"}} onClick={()=>setModal(null)}>
